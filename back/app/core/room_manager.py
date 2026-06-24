@@ -2,22 +2,17 @@ import asyncio
 import io
 import json
 import time
+import re
 import wave as wave_mod
 from datetime import datetime
 from typing import List, Optional, Dict, Set
 
 from fastapi import WebSocket
 
-from services import (
-    client,
-    shared_conv,
-    process_message,
-    is_speech_present,
-    SAMPLE_RATE,
-    whisper_model,
-)
+from app.core.config import client, SAMPLE_RATE, ROOM_SILENCE_THRESHOLD_MS
+from app.services.llm_service import shared_conv, process_message
+from app.services.audio_service import is_speech_present, whisper_model
 
-# ── Stream Parsing Helper ────────────────────────────────────────────────────
 def extract_messages_from_json(json_string: str) -> List[dict]:
     messages = []
     brace_level = 0
@@ -53,14 +48,6 @@ def extract_messages_from_json(json_string: str) -> List[dict]:
                 brace_level -= 1
     return messages
 
-# ── Room-level silence detection ──────────────────────────────────────────────
-# How long the ENTIRE ROOM must be silent before the AI processes the turn.
-ROOM_SILENCE_THRESHOLD_MS = 5000
-
-# ---------------------------------------------------------------------------
-# Participant
-# ---------------------------------------------------------------------------
-
 class Participant:
     def __init__(self, session_id: str, name: str, websocket: WebSocket):
         self.session_id = session_id
@@ -69,17 +56,9 @@ class Participant:
         self.websocket = websocket
         self.joined_at = datetime.utcnow().isoformat() + "Z"
 
-        # Per-participant audio accumulation for the current shared turn.
-        # Keyed by: list of raw PCM bytearray chunks received this turn.
         self.audio_chunks: bytearray = bytearray()
-
-        # Whether this participant is currently speaking (above noise floor).
         self.is_speaking: bool = False
-
-        # Participation entropy (0-100)
         self.entropy: int = 0
-
-        # Continuous transcription state
         self.transcripts: Dict[int, str] = {}
         self.chunk_index: int = 0
         self.pending_tasks: Set[asyncio.Task] = set()
@@ -95,31 +74,16 @@ class Participant:
             "joinedAt": self.joined_at,
         }
 
-
-# ---------------------------------------------------------------------------
-# Room
-# ---------------------------------------------------------------------------
-
 class Room:
-    """
-    Single-room with room-level silence-based turn detection.
-    """
-
     def __init__(self):
         self._participants: Dict[str, Participant] = {}
         self._lock = asyncio.Lock()
-
-        # Voice session state
-        self.voice_session_active: bool = False   # at least one mic is live
-
-        # Turn state
-        self._turn_active: bool = False           # a turn is in progress
+        self.voice_session_active: bool = False
+        self._turn_active: bool = False
         self._silence_timer: Optional[asyncio.TimerHandle] = None
-        self._processing: bool = False            # AI is generating a response
-        self._latest_reasoning_task: Optional[asyncio.Task] = None
-        self._latest_llm_result: Optional[dict] = None
-
-    # -- Participant management -----------------------------------------------
+        self._processing: bool = False
+        self._intervention_needed: bool = False
+        self._monitor_task: Optional[asyncio.Task] = None
 
     async def add(self, participant: Participant) -> None:
         async with self._lock:
@@ -139,8 +103,6 @@ class Room:
     @property
     def active_participants(self) -> List[Participant]:
         return [p for p in self._participants.values() if p.mic_active]
-
-    # -- Broadcasting ---------------------------------------------------------
 
     async def broadcast(self, payload: dict, exclude: Optional[str] = None) -> None:
         dead: List[str] = []
@@ -162,12 +124,11 @@ class Room:
             except Exception:
                 await self.remove(session_id)
 
-    # -- Voice session --------------------------------------------------------
-
     async def activate_voice_session(self) -> None:
         if self.voice_session_active:
             return
         self.voice_session_active = True
+        self._monitor_task = asyncio.create_task(self._proactive_monitor_loop())
         await self.broadcast({
             "type": "voice_session_started",
             "participants": self.participant_list(),
@@ -180,6 +141,9 @@ class Room:
         self.voice_session_active = False
         self._cancel_silence_timer()
         self._turn_active = False
+        if self._monitor_task:
+            self._monitor_task.cancel()
+            self._monitor_task = None
         for p in self._participants.values():
             p.audio_chunks.clear()
             p.is_speaking = False
@@ -193,8 +157,6 @@ class Room:
             "participants": self.participant_list(),
         })
         print("[room] voice session ended")
-
-    # -- Audio ingestion & turn coordination ----------------------------------
 
     async def ingest_audio(self, session_id: str, pcm_bytes: bytes) -> None:
         if self._processing:
@@ -241,7 +203,7 @@ class Room:
                 chunk_data = bytes(p.audio_chunks)
                 p.audio_chunks.clear()
                 
-                if len(chunk_data) > 3200:  # Ignore chunks < 0.1s
+                if len(chunk_data) > 3200:
                     idx = p.chunk_index
                     p.chunk_index += 1
                     task = asyncio.create_task(self._transcribe_bg(p, chunk_data, idx))
@@ -269,7 +231,7 @@ class Room:
             len(p.audio_chunks) > 0 or len(p.transcripts) > 0 or len(p.pending_tasks) > 0
             for p in self._participants.values()
         )
-        if not has_audio:
+        if not has_audio and not self._intervention_needed:
             self._turn_active = False
             return
 
@@ -324,52 +286,57 @@ class Room:
             print(f"[room][{p.name}] bg transcription {chunk_idx} done: '{text}'")
             if text:
                 p.transcripts[chunk_idx] = text
-                self._trigger_parallel_reasoning()
         except Exception as e:
             print(f"[room] background transcription error for {p.name}: {e}")
 
-    def _trigger_parallel_reasoning(self) -> None:
-        if self._latest_reasoning_task and not self._latest_reasoning_task.done():
-            self._latest_reasoning_task.cancel()
-            
-        ongoing_texts = []
-        for p in self._participants.values():
-            sorted_texts = [p.transcripts[k] for k in sorted(p.transcripts.keys())]
-            text = " ".join(sorted_texts).strip()
-            if text:
-                ongoing_texts.append(f"{p.name} said: {text}")
+    async def _proactive_monitor_loop(self) -> None:
+        while self.voice_session_active:
+            await asyncio.sleep(3.0)
+            if self._processing:
+                continue
+
+            ongoing_texts = []
+            metadata_parts = []
+            now = time.time()
+            for p in self._participants.values():
+                sorted_texts = [p.transcripts[k] for k in sorted(p.transcripts.keys())]
+                text = " ".join(sorted_texts).strip()
+                if text:
+                    ongoing_texts.append(f"{p.name} said: {text}")
                 
-        if not ongoing_texts:
-            return
+                time_since_speech = now - p.last_speech_time if p.last_speech_time > 0 else 0
+                metadata_parts.append(f"User '{p.name}' last spoke {time_since_speech:.1f} seconds ago.")
+
+            combined_ongoing = "\n".join(ongoing_texts)
+            metadata = "[METADATA]\n" + "\n".join(metadata_parts)
             
-        combined_ongoing = "\n".join(ongoing_texts)
-        
-        async def _run_llm():
             try:
-                prompt = shared_conv.get_facilitation_prompt(combined_ongoing)
+                prompt = shared_conv.get_lightweight_polling_prompt(combined_ongoing, metadata)
                 res = await client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=prompt,
-                    max_tokens=300,
-                    response_format={ "type": "json_object" },
+                    max_tokens=10,
                 )
-                raw_json = res.choices[0].message.content
-                parsed = json.loads(raw_json)
-                self._latest_llm_result = parsed
-                print(f"[room] Parallel reasoning completed: action={parsed.get('action')}")
+                answer = res.choices[0].message.content.strip().upper()
+                print(f"[room] Lightweight Model polling... answer={answer}")
+                if "YES" in answer:
+                    self._intervention_needed = True
+                    if not self._turn_active:
+                        print("[room] Lightweight Model said YES during silence. Triggering main LLM immediately.")
+                        self._turn_active = True
+                        asyncio.create_task(self._on_room_silence())
+                else:
+                    self._intervention_needed = False
             except asyncio.CancelledError:
-                pass
+                break
             except Exception as e:
-                print(f"[room] Parallel reasoning error: {e}")
-
-        self._latest_reasoning_task = asyncio.create_task(_run_llm())
+                print(f"[room] Proactive monitor error: {e}")
 
     async def _process_turn(self) -> None:
         print("[room] _process_turn started")
         start_time = time.time()
         transcripts: List[dict] = []
 
-        # Flush remaining chunks
         for p in self._participants.values():
             if len(p.audio_chunks) > 0:
                 chunk_data = bytes(p.audio_chunks)
@@ -381,7 +348,6 @@ class Room:
                     p.pending_tasks.add(task)
                     task.add_done_callback(p.pending_tasks.discard)
 
-        # Wait for all background tasks
         all_tasks = []
         for p in self._participants.values():
             all_tasks.extend(list(p.pending_tasks))
@@ -400,17 +366,15 @@ class Room:
             p.chunk_index = 0
             p.pending_tasks.clear()
 
-
-
-        if not transcripts:
-            print("[room] no transcribable audio — skipping AI response")
+        if not transcripts and not self._intervention_needed:
+            print("[room] no transcribable audio and no intervention needed — skipping AI response")
             await self.broadcast({"type": "turn_skipped"})
             return
 
         print(f"[room] Transcripts collected: {transcripts}")
 
-        # FUSE transcripts here
-        shared_conv.add_turn(transcripts)
+        if transcripts:
+            shared_conv.add_turn(transcripts)
 
         await self.broadcast({
             "type": "turn_transcripts",
@@ -418,47 +382,119 @@ class Room:
         })
 
         try:
-            if self._latest_reasoning_task and not self._latest_reasoning_task.done():
-                print("[room] Waiting for parallel reasoning to finish...")
-                try:
-                    await self._latest_reasoning_task
-                except Exception:
-                    pass
-
-            result = self._latest_llm_result or {}
-            action = result.get("action", "NO_ACTION")
-            messages = result.get("messages", [])
-
-            self._latest_reasoning_task = None
-            self._latest_llm_result = None
-
-            print(f"[room] AI decision action (cached): {action}")
-
-            if action == "NO_ACTION" or not messages:
-                print("[room] AI chose NO_ACTION or returned empty messages, broadcasting turn_skipped")
+            if not self._intervention_needed:
+                print("[room] AI decision action: NO_ACTION (intervention not needed)")
                 await self.broadcast({"type": "turn_skipped"})
+                self._intervention_needed = False
             else:
+                ongoing_texts = []
+                metadata_parts = []
+                now = time.time()
+                for p in self._participants.values():
+                    time_since_speech = now - p.last_speech_time if p.last_speech_time > 0 else 0
+                    metadata_parts.append(f"User '{p.name}' last spoke {time_since_speech:.1f} seconds ago.")
+                metadata = "[METADATA]\n" + "\n".join(metadata_parts)
+                combined_ongoing = "\n".join(ongoing_texts)
+
+                print("[room] Generating main AI response (streaming)...")
+                prompt = shared_conv.get_facilitation_prompt(combined_ongoing, metadata)
+                response = await client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=prompt,
+                    max_tokens=300,
+                    stream=True,
+                )
+                
+                self._intervention_needed = False
+                action = "NO_ACTION"
+                action_found = False
+                buffer = ""
+                current_sentence = ""
                 ai_text_parts = []
-                for i, msg in enumerate(messages):
-                    print(f"[room] processing message {i}...")
+                msg_index = 0
+
+                async for chunk in response:
+                    if not chunk.choices:
+                        continue
+                    delta = chunk.choices[0].delta.content or ""
+                    
+                    if not action_found:
+                        buffer += delta
+                        match = re.search(r"(?i)(?:TEXT|MESSAGE):\s*", buffer)
+                        if match:
+                            action_match = re.search(r"(?i)ACTION:\s*([a-zA-Z_]+)", buffer)
+                            action = action_match.group(1).upper() if action_match else "UNKNOWN"
+                            print(f"[room] AI decision action (streamed): {action}")
+                            action_found = True
+                            current_sentence = buffer[match.end():]
+                            buffer = ""
+                    else:
+                        current_sentence += delta
+                    
+                    if action_found:
+                        match = re.search(r'([.?!]+)["\'\)]*\s+$', current_sentence)
+                        if match:
+                            text_to_process = current_sentence.strip()
+                            if text_to_process:
+                                ai_text_parts.append(text_to_process)
+                                print(f"[room] processing chunk {msg_index}...")
+                                try:
+                                    res_msg = await asyncio.wait_for(process_message(msg_index, {"text": text_to_process}), timeout=30.0)
+                                    print(f"[room] chunk {msg_index} processed, broadcasting...")
+                                    await self.broadcast({
+                                        "type": "messages",
+                                        "messages": [res_msg],
+                                    })
+                                    if msg_index == 0:
+                                        elapsed = time.time() - start_time
+                                        print(f"[room] Time to first response sent to frontend: {elapsed:.2f}s")
+                                except asyncio.TimeoutError:
+                                    print(f"[room] TIMEOUT processing chunk {msg_index}, skipping.")
+                                except Exception as e:
+                                    print(f"[room] ERROR processing chunk {msg_index}: {e}")
+                                msg_index += 1
+                            current_sentence = ""
+
+                # Flush remainder
+                if not action_found:
+                    text_to_process = buffer
+                    action_match = re.search(r"(?i)ACTION:\s*([a-zA-Z_]+)", text_to_process)
+                    if action_match:
+                        action = action_match.group(1).upper()
+                    text_to_process = re.sub(r"(?i)ACTION:\s*[a-zA-Z_]+\s*", "", text_to_process)
+                    text_to_process = re.sub(r"(?i)(?:TEXT|MESSAGE):\s*", "", text_to_process)
+                    text_to_process = re.sub(r"(?i)\[Action taken:.*?\]\s*(?:Yacine said:\s*)?", "", text_to_process)
+                    current_sentence = text_to_process.strip()
+
+                if current_sentence.strip():
+                    text_to_process = current_sentence.strip()
+                    ai_text_parts.append(text_to_process)
+                    print(f"[room] processing chunk {msg_index}...")
                     try:
-                        res = await asyncio.wait_for(process_message(i, msg), timeout=30.0)
-                        print(f"[room] message {i} processed, broadcasting...")
+                        res_msg = await asyncio.wait_for(process_message(msg_index, {"text": text_to_process}), timeout=30.0)
                         await self.broadcast({
                             "type": "messages",
-                            "messages": [res],
+                            "messages": [res_msg],
                         })
-                        if i == 0:
+                        if msg_index == 0:
                             elapsed = time.time() - start_time
                             print(f"[room] Time to first response sent to frontend: {elapsed:.2f}s")
-                        ai_text_parts.append(msg.get("text", ""))
-                    except asyncio.TimeoutError:
-                        print(f"[room] TIMEOUT processing message {i}, skipping to next.")
                     except Exception as e:
-                        print(f"[room] ERROR processing message {i}: {e}")
-                
-                ai_text = " ".join(ai_text_parts).strip()
-                shared_conv.add_ai_response(action, ai_text)
+                        print(f"[room] ERROR processing chunk {msg_index}: {e}")
+
+                if not ai_text_parts:
+                    print("[room] AI chose NO_ACTION or returned empty messages, broadcasting turn_skipped")
+                    await self.broadcast({"type": "turn_skipped"})
+                else:
+                    if action == "NO_ACTION":
+                        action = "UNKNOWN"
+                    ai_text = " ".join(ai_text_parts).strip()
+                    shared_conv.add_ai_response(action, ai_text)
+
+                    now = time.time()
+                    self._last_ai_speech_time = now
+                    for p in self._participants.values():
+                        p.last_speech_time = 0.0
 
             total_elapsed = time.time() - start_time
             print(f"[room] Total turn processing time: {total_elapsed:.2f}s")
@@ -467,6 +503,4 @@ class Room:
             traceback.print_exc()
             await self.broadcast({"type": "error", "detail": str(e)})
 
-
-# Single global room
 room = Room()

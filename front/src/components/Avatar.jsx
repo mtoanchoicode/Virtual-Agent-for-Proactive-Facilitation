@@ -109,8 +109,15 @@ export function Avatar(props) {
       setAnimation("Idle");
       return;
     }
-    setAnimation(message.animation);
-    setFacialExpression(message.facialExpression);
+
+    const naturalAnimations = ["Talking_0", "Talking_1", "Talking_2", "Idle"];
+    const naturalExpressions = ["smile", "surprised", "default"];
+    
+    const randomAnimation = message.animation || naturalAnimations[Math.floor(Math.random() * naturalAnimations.length)];
+    const randomExpression = message.facialExpression || naturalExpressions[Math.floor(Math.random() * naturalExpressions.length)];
+
+    setAnimation(randomAnimation);
+    setFacialExpression(randomExpression);
     
     const mimeType = message.audio.startsWith("UklGR") ? "audio/wav" : "audio/mpeg";
     const audio = new Audio(`data:${mimeType};base64,${message.audio}`);

@@ -1,130 +1,13 @@
-import os
-import asyncio
-import sys
-import json
 import uuid
+import json
 from typing import Optional
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from app.core.room_manager import room, Participant
 
-from room_manager import room, Participant
-from services import (
-    process_message,
-    audio_file_to_base64,
-    client,
-    OPENAI_API_KEY
-)
+router = APIRouter()
 
-if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-
-app = FastAPI(title="IAcine Avatar 3D API")
-
-local_origins = ["http://localhost:5173", "https://localhost:5173"]
-local_origin_regex = (
-    r"^https?://(?:localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
-    r"|192\.168\.\d{1,3}\.\d{1,3}"
-    r"|172\.(?:1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})(?::\d+)?$"
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"], # Temporary for testing
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-os.makedirs("audios", exist_ok=True)
-
-
-# ---------------------------------------------------------------------------
-# Models
-# ---------------------------------------------------------------------------
-
-class ChatRequest(BaseModel):
-    message: Optional[str] = None
-
-
-# ---------------------------------------------------------------------------
-# HTTP Routes
-# ---------------------------------------------------------------------------
-
-@app.get("/api")
-async def root():
-    return "Welcome to IAcine Avatar 3D API 🤖"
-
-
-@app.get("/room/participants")
-async def get_participants():
-    return {
-        "participants": room.participant_list(),
-        "voiceSessionActive": room.voice_session_active,
-    }
-
-
-@app.post("/chat")
-async def chat(request: ChatRequest):
-    if not request.message:
-        return {
-            "messages": [
-                {
-                    "text": "Hey dear... How was your day?",
-                    "audio": await audio_file_to_base64("audios/intro_0.wav"),
-                    "facialExpression": "smile",
-                    "animation": "Talking_1",
-                },
-            ]
-        }
-
-    if OPENAI_API_KEY == "-":
-        return {
-            "messages": [
-                {
-                    "text": "Please my dear, don't forget to add your API keys!",
-                    "audio": await audio_file_to_base64("audios/api_0.wav"),
-                    "facialExpression": "angry",
-                    "animation": "Angry",
-                }
-            ]
-        }
-
-    completion = await client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "system",
-                "content": """
-                    Your name is Yacine, you're an expert in Artificial Intelligence and Data.
-                    You will always reply with a JSON array of messages. Max 2 messages.
-                    Each message has a text, facialExpression, and animation property.
-                    Facial expressions: smile, sad, angry, surprised, funnyFace, default.
-                    Animations: Talking_0, Talking_1, Talking_2, Crying, Laughing, Rumba, Idle, Terrified, Angry.
-                """,
-            },
-            {"role": "user", "content": request.message},
-        ],
-    )
-    raw = completion.choices[0].message.content
-    clean = raw.replace("```json", "").replace("```", "").strip()
-    messages = json.loads(clean)
-    if isinstance(messages, dict):
-        messages = [messages]
-
-    tasks = [process_message(i, msg) for i, msg in enumerate(messages)]
-    processed = await asyncio.gather(*tasks)
-    return {"messages": processed}
-
-
-# ---------------------------------------------------------------------------
-# WebSocket
-# ---------------------------------------------------------------------------
-
-@app.websocket("/ws/voice")
+@router.websocket("/ws/voice")
 async def voice_ws(websocket: WebSocket):
     await websocket.accept()
 
@@ -310,33 +193,3 @@ async def voice_ws(websocket: WebSocket):
             if client_voice_active and len(room.active_participants) == 0:
                 await room.deactivate_voice_session()
             print(f"[room] {participant.name} disconnected")
-
-
-# ---------------------------------------------------------------------------
-# Serve Frontend
-# ---------------------------------------------------------------------------
-dist_path = os.path.join(os.path.dirname(__file__), "../front/dist")
-
-if os.path.exists(dist_path):
-    app.mount("/assets", StaticFiles(directory=os.path.join(dist_path, "assets")), name="assets")
-
-    @app.get("/{full_path:path}")
-    async def serve_frontend(full_path: str):
-        path = os.path.join(dist_path, full_path)
-        if os.path.isfile(path):
-            return FileResponse(path)
-        return FileResponse(os.path.join(dist_path, "index.html"))
-else:
-    print(f"Warning: Frontend build directory not found at {dist_path}. Please build the frontend.")
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=3000,
-        # reload=True,
-        ssl_keyfile="../front/certs/192.168.1.20+3-key.pem",
-        ssl_certfile="../front/certs/192.168.1.20+3.pem",
-    )
