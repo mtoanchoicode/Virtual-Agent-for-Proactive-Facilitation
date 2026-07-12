@@ -22,6 +22,9 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 5173,
     https: httpsConfig,
+    hmr: {
+      clientPort: 443, // Forces HMR WebSocket to use standard HTTPS port for ngrok
+    },
     headers: {
       "Cross-Origin-Opener-Policy": "same-origin",
       "Cross-Origin-Embedder-Policy": "require-corp",

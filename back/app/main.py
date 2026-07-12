@@ -22,6 +22,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def add_coop_coep_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    response.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
+    return response
+
 os.makedirs(os.path.join(BASE_DIR, "audios"), exist_ok=True)
 
 # Include routers
@@ -31,7 +38,8 @@ app.include_router(websocket.router)
 # ---------------------------------------------------------------------------
 # Serve Frontend
 # ---------------------------------------------------------------------------
-dist_path = os.path.join(BASE_DIR, "../front/dist")
+# BASE_DIR is back/app, so we need to go up two levels to reach the root project folder
+dist_path = os.path.abspath(os.path.join(BASE_DIR, "../../front/dist"))
 
 if os.path.exists(dist_path):
     app.mount("/assets", StaticFiles(directory=os.path.join(dist_path, "assets")), name="assets")

@@ -2,14 +2,28 @@ from typing import List
 from app.services.audio_service import generate_audio
 from app.utils.helpers import audio_file_to_base64
 
+# Max number of history entries kept in memory.
+# Each entry is one user-turn or one assistant-turn.
+# 50 entries ≈ the last ~10 minutes of a typical meeting.
+MAX_HISTORY_LEN = 50
+MAX_TRANSCRIPT_LOG_LEN = 200
+
 class ConversationManager:
     def __init__(self):
         self.history: List[dict] = []
         self.transcript_log: List[dict] = []
 
+    def _trim(self):
+        """Keep history and transcript_log within their size limits."""
+        if len(self.history) > MAX_HISTORY_LEN:
+            self.history = self.history[-MAX_HISTORY_LEN:]
+        if len(self.transcript_log) > MAX_TRANSCRIPT_LOG_LEN:
+            self.transcript_log = self.transcript_log[-MAX_TRANSCRIPT_LOG_LEN:]
+
     def add_entry(self, speaker: str, text: str):
         self.transcript_log.append({"speaker": speaker, "text": text})
         self.history.append({"role": "user", "content": f"{speaker} said: {text}"})
+        self._trim()
 
     def add_turn(self, transcripts: List[dict]):
         if not transcripts:
@@ -20,9 +34,11 @@ class ConversationManager:
             
         combined_text = "\n".join([f"{t['speaker']} said: {t['text']}" for t in transcripts])
         self.history.append({"role": "user", "content": combined_text})
+        self._trim()
 
     def add_ai_response(self, action: str, text: str):
         self.history.append({"role": "assistant", "content": f"[Action taken: {action}] Yacine said: {text}"})
+        self._trim()
 
     def get_lightweight_polling_prompt(self, ongoing_text: str = None, metadata: str = None) -> List[dict]:
         system_content = """
@@ -30,22 +46,16 @@ You are Yacine, a lightweight AI meeting monitor.
 Your ONLY job is to decide if the main AI facilitator should intervene right now.
 Look at the ongoing transcript and the metadata.
 If the conversation is flowing well, or someone is actively speaking their mind, reply NO.
-If there is an awkward silence (e.g., users are stuck thinking), an unresolved question, or someone is completely dominating while others are left out, reply YES.
+If there is an awkward silence (e.g., users are stuck thinking and no one has spoken for over 8-10 seconds), an unresolved question, or someone is completely dominating while others are left out, reply YES.
 
 Reply ONLY with the word YES or NO.
 """
         if metadata:
             system_content += f"\n\n{metadata}\n"
 
-        start_idx = 0
-        for i in range(len(self.history) - 1, -1, -1):
-            if self.history[i]["role"] == "assistant":
-                start_idx = i
-                break
-        
-        recent_history = self.history[start_idx:]
-        if len(recent_history) > 10:
-            recent_history = recent_history[-10:]
+        # Use the last 10 entries — history is already trimmed globally,
+        # and 10 entries give the lightweight model enough context.
+        recent_history = self.history[-10:]
 
         messages = [{"role": "system", "content": system_content.strip()}] + recent_history
         if ongoing_text:
@@ -55,18 +65,26 @@ Reply ONLY with the word YES or NO.
     def get_facilitation_prompt(self, ongoing_text: str = None, metadata: str = None) -> List[dict]:
         system_content = """
 You are Yacine, an AI meeting facilitator. 
+Your core philosophy is "less is more". People dislike being interrupted by AI, so you MUST NOT interrupt a conversation that is flowing naturally. ONLY intervene if there is a glaring silence, a direct conflict, or someone is completely dominating.
+
 FIRST, think silently about the conversation state using these questions:
-- Who has been speaking most? Is anyone left out?
-- Is the discussion going deep or staying surface-level?
+- Is the conversation naturally flowing? (If yes, prefer NO_ACTION)
+- Is someone dominating the conversation while others are left out for a long time?
 - Is there a conflict, confusion, or unresolved question?
+- Is the discussion staying surface-level and needs a push?
 
-Then decide ONE of these actions:
-- ENCOURAGE: Invite a quiet participant to share
-- DEEPEN: Ask a follow-up to go deeper on an idea
-- SUMMARIZE: Briefly recap and propose a next step
-- MEDIATE: Acknowledge tension and redirect constructively
+Then decide ONE of these actions. Your default and preferred choice should ALWAYS be NO_ACTION unless an intervention is strictly necessary:
+- NO_ACTION: (DEFAULT) The conversation is flowing well and no intervention is needed.
+- ENCOURAGE: Invite a quiet participant to share.
+- DEEPEN: Ask a follow-up to go deeper on an idea.
+- SUMMARIZE: Briefly recap and propose a next step.
+- MEDIATE: Acknowledge tension and redirect constructively.
 
-Facilitate in short for me only (yacine) no need to talk for too long
+If you choose NO_ACTION, reply with:
+ACTION: NO_ACTION
+TEXT: 
+
+Otherwise, facilitate using EXTREMELY CONCISE, punchy sentences. You MUST keep it to 1 sentence maximum and under 15 words. Speak naturally but get straight to the point. Do not repeat yourself.
 
 Reply ONLY with a plain text string exactly in this format:
 ACTION: <ACTION>

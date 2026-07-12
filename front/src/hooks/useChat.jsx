@@ -21,7 +21,25 @@ const CHUNK_SIZE = 4096;
 const WARMUP_MS = 1500;
 
 const ICE_SERVERS = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+    {
+      urls: "turn:openrelay.metered.ca:80",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443?transport=tcp",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+  ],
 };
 
 export const ChatProvider = ({ children }) => {
@@ -57,6 +75,7 @@ export const ChatProvider = ({ children }) => {
 
   // peerConnections: Map<sessionId, RTCPeerConnection>
   const peerConnectionsRef = useRef({});
+  const peerAudioStreamRef = useRef(null);
   // Keep a ref to webcamStream so callbacks always see the latest value
   const webcamStreamRef = useRef(null);
   const sessionIdRef = useRef(null);
@@ -128,14 +147,34 @@ export const ChatProvider = ({ children }) => {
         .getTracks()
         .forEach((track) => pc.addTrack(track, localStream));
     }
+    
+    // Add local audio tracks so the remote peer can hear us
+    const audioStream = peerAudioStreamRef.current;
+    if (audioStream) {
+      console.log("[WebRTC] Adding local audio tracks to peer connection", remoteSessionId, audioStream.getAudioTracks().length);
+      audioStream
+        .getTracks()
+        .forEach((track) => pc.addTrack(track, audioStream));
+    } else {
+      console.warn("[WebRTC] No local audio stream found when creating peer connection", remoteSessionId);
+    }
 
-    // When we receive a remote video track, store it in state
+    // When we receive a remote track, add it to the peer's unified MediaStream
     pc.ontrack = (e) => {
-      const [remoteStream] = e.streams;
-      setRemoteStreams((prev) => ({
-        ...prev,
-        [remoteSessionId]: remoteStream,
-      }));
+      console.log("[WebRTC] Received remote track:", e.track.kind, "id:", e.track.id, "from:", remoteSessionId);
+      setRemoteStreams((prev) => {
+        const existingStream = prev[remoteSessionId];
+        const tracks = existingStream ? existingStream.getTracks() : [];
+        if (!tracks.find(t => t.id === e.track.id)) {
+          tracks.push(e.track);
+        }
+        // Create a new MediaStream to ensure React detects the object reference change
+        const newStream = new MediaStream(tracks);
+        return {
+          ...prev,
+          [remoteSessionId]: newStream,
+        };
+      });
     };
 
     // Forward ICE candidates to the remote peer via the signaling server
@@ -152,6 +191,7 @@ export const ChatProvider = ({ children }) => {
     };
 
     pc.onconnectionstatechange = () => {
+      console.log(`[WebRTC] Connection state with ${remoteSessionId}:`, pc.connectionState);
       if (
         pc.connectionState === "disconnected" ||
         pc.connectionState === "failed" ||
@@ -165,6 +205,10 @@ export const ChatProvider = ({ children }) => {
           return next;
         });
       }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      console.log(`[WebRTC] ICE connection state with ${remoteSessionId}:`, pc.iceConnectionState);
     };
 
     return pc;
@@ -473,7 +517,11 @@ export const ChatProvider = ({ children }) => {
   const startAudioStreaming = useCallback(async () => {
     if (localVoiceStreaming) return;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      let stream = peerAudioStreamRef.current;
+      if (!stream) {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        peerAudioStreamRef.current = stream;
+      }
       streamRef.current = stream;
       const ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
       audioCtxRef.current = ctx;
@@ -507,7 +555,7 @@ export const ChatProvider = ({ children }) => {
     clearTimeout(warmupTimerRef.current);
     processorRef.current?.disconnect();
     audioCtxRef.current?.close();
-    streamRef.current?.getTracks().forEach((t) => t.stop());
+    // Do NOT stop the tracks here, so WebRTC peer audio can continue!
     processorRef.current = null;
     audioCtxRef.current = null;
     streamRef.current = null;
@@ -516,10 +564,22 @@ export const ChatProvider = ({ children }) => {
 
   // ── Room controls ─────────────────────────────────────────────────────
   const joinRoom = useCallback(
-    (name) => {
+    async (name) => {
       const trimmed = name.trim();
       if (!trimmed) return;
       setMyName(trimmed);
+
+      try {
+        if (!peerAudioStreamRef.current) {
+          peerAudioStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+          console.log("[WebRTC] Acquired local audio stream", peerAudioStreamRef.current.getAudioTracks().length);
+        } else {
+          console.log("[WebRTC] Already have local audio stream");
+        }
+      } catch (err) {
+        console.error("[WebRTC] Mic access denied", err);
+      }
+
       const ws = connectWS();
       const send = () =>
         ws.send(JSON.stringify({ type: "join", name: trimmed }));
@@ -536,6 +596,9 @@ export const ChatProvider = ({ children }) => {
     setWebcamStream(null);
     webcamStreamRef.current = null;
     setWebcamActive(false);
+    // Stop peer audio
+    peerAudioStreamRef.current?.getTracks().forEach((t) => t.stop());
+    peerAudioStreamRef.current = null;
     // Close peer connections
     Object.values(peerConnectionsRef.current).forEach((pc) => pc.close());
     peerConnectionsRef.current = {};
@@ -560,6 +623,11 @@ export const ChatProvider = ({ children }) => {
     wsRef.current?.send(
       JSON.stringify({ type: "update_mic", micActive: next }),
     );
+    if (peerAudioStreamRef.current) {
+      peerAudioStreamRef.current.getAudioTracks().forEach((t) => {
+        t.enabled = next;
+      });
+    }
   }, [sessionId, micActive]);
 
   const updateEntropy = useCallback((entropy) => {

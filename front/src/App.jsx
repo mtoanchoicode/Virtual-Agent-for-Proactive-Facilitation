@@ -375,6 +375,22 @@ function ParticipantCell({
   // We show the chart if we have data for the remote user, or if local webcam is active
   const shouldShowChart = isMe ? webcamActive : (remoteEntropy !== undefined);
 
+  // Check if the stream actually has a video track
+  const hasVideo = isMe 
+    ? webcamActive 
+    : !!(webcamStream && webcamStream.getVideoTracks().length > 0);
+
+  // A ref to play remote audio reliably
+  const audioRef = useRef(null);
+  useEffect(() => {
+    if (!isMe && webcamStream && audioRef.current) {
+      if (audioRef.current.srcObject !== webcamStream) {
+        audioRef.current.srcObject = webcamStream;
+        audioRef.current.play().catch(e => console.error("Audio play failed:", e));
+      }
+    }
+  }, [isMe, webcamStream]);
+
   return (
     <div
       className="relative flex h-full flex-col items-center justify-center gap-4 rounded-3xl overflow-hidden"
@@ -390,8 +406,13 @@ function ParticipantCell({
         <EntropyChart data={entropyHistory} />
       )}
 
+      {/* Remote Audio Player (Always active if remote stream exists) */}
+      {!isMe && webcamStream && (
+        <audio ref={audioRef} autoPlay playsInline style={{ display: "none" }} />
+      )}
+
       {/* Webcam video fill — renders behind everything when active */}
-      {webcamActive && webcamStream && (
+      {hasVideo && webcamStream && (
         <WebcamFeed
           stream={webcamStream}
           mirror={isMe}
@@ -413,7 +434,7 @@ function ParticipantCell({
       )}
 
       {/* Avatar circle — hidden when webcam is active */}
-      {!webcamActive && (
+      {!hasVideo && (
         <div
           className="flex h-14 w-14 items-center justify-center rounded-full text-xl font-bold text-white shadow-lg"
           style={{
@@ -429,7 +450,7 @@ function ParticipantCell({
       <div
         className="text-center"
         style={
-          webcamActive
+          hasVideo
             ? {
               position: "absolute",
               bottom: "1rem",
@@ -443,9 +464,9 @@ function ParticipantCell({
         <p
           className="text-sm font-semibold"
           style={{
-            color: isMe && webcamActive ? "#fff" : "#f1f5f9",
+            color: isMe && hasVideo ? "#fff" : "#f1f5f9",
             textShadow:
-              isMe && webcamActive ? "0 1px 4px rgba(0,0,0,0.7)" : "none",
+              isMe && hasVideo ? "0 1px 4px rgba(0,0,0,0.7)" : "none",
           }}
         >
           {participant.name}
@@ -459,7 +480,7 @@ function ParticipantCell({
           className="mt-0.5 text-[11px] uppercase tracking-[0.2em]"
           style={{
             color:
-              isMe && webcamActive
+              isMe && hasVideo
                 ? "rgba(255,255,255,0.6)"
                 : "rgb(100,116,139)",
           }}
@@ -545,7 +566,7 @@ function ParticipantCell({
           )}
 
           {/* Blur toggle */}
-          {webcamActive && (
+          {hasVideo && (
             <button
               onClick={() => setBlurActive(!blurActive)}
               className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all"

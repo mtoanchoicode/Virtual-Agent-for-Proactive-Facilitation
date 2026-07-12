@@ -112,22 +112,22 @@ export function Avatar(props) {
 
     const naturalAnimations = ["Talking_0", "Talking_1", "Talking_2", "Idle"];
     const naturalExpressions = ["smile", "surprised", "default"];
-    
+
     const randomAnimation = message.animation || naturalAnimations[Math.floor(Math.random() * naturalAnimations.length)];
     const randomExpression = message.facialExpression || naturalExpressions[Math.floor(Math.random() * naturalExpressions.length)];
 
     setAnimation(randomAnimation);
     setFacialExpression(randomExpression);
-    
+
     const mimeType = message.audio.startsWith("UklGR") ? "audio/wav" : "audio/mpeg";
     const audio = new Audio(`data:${mimeType};base64,${message.audio}`);
-    
+
     // Setup AudioContext for real-time lip sync analysis
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
     }
     const audioCtx = audioContextRef.current;
-    
+
     if (audioCtx.state === "suspended") {
       audioCtx.resume();
     }
@@ -135,18 +135,18 @@ export function Avatar(props) {
     const analyser = audioCtx.createAnalyser();
     analyser.fftSize = 256;
     analyser.smoothingTimeConstant = 0.5;
-    
+
     // Connect audio to analyser and speakers
     const source = audioCtx.createMediaElementSource(audio);
     source.connect(analyser);
     analyser.connect(audioCtx.destination);
-    
+
     analyserRef.current = analyser;
     sourceRef.current = source;
 
     audio.play();
     setAudio(audio);
-    
+
     audio.onended = () => {
       onMessagePlayed();
       if (sourceRef.current) {
@@ -234,19 +234,19 @@ export function Avatar(props) {
     if (!audio.paused && !audio.ended) {
       const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
       analyserRef.current.getByteFrequencyData(dataArray);
-      
+
       // Calculate average volume (focusing on vocal frequencies)
       let sum = 0;
       // Use lower half of frequencies which usually contain human voice
-      const length = dataArray.length / 2; 
+      const length = dataArray.length / 2;
       for (let i = 0; i < length; i++) {
         sum += dataArray[i];
       }
       const average = sum / length;
-      
+
       // Map average (usually 0-150 for speech) to intensity (0-1)
-      const normalizedVolume = average / 100; 
-      
+      const normalizedVolume = average / 100;
+
       if (normalizedVolume > 0.05) {
         isSpeaking = true;
         intensity = Math.min(1.0, normalizedVolume * 0.7 + Math.random() * 0.1);
@@ -397,9 +397,6 @@ export function Avatar(props) {
     window.addEventListener("mousemove", handleMouseMove);
     return () => window.removeEventListener("mousemove", handleMouseMove);
   }, []);
-
-  console.log("Available Morph Targets on Head:", Object.keys(nodes.Wolf3D_Head.morphTargetDictionary));
-
   return (
     <group {...props} dispose={null} ref={group}>
       <primitive object={nodes.Hips} />
