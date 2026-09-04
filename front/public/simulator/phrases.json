@@ -1,0 +1,52 @@
+[
+  {
+    "name": "Greeting",
+    "file": "greeting.mp3",
+    "text": "Hello! Great to meet you here today. I am really glad we could join this session."
+  },
+  {
+    "name": "Agreement",
+    "file": "agreement.mp3",
+    "text": "Yes, I completely agree with that point. That makes a lot of sense to me."
+  },
+  {
+    "name": "Question",
+    "file": "question.mp3",
+    "text": "Can you explain more about what you just said? I would love to hear more details."
+  },
+  {
+    "name": "Positive Feedback",
+    "file": "positive.mp3",
+    "text": "That is a really interesting perspective, thank you very much for sharing that with us."
+  },
+  {
+    "name": "Disagreement",
+    "file": "disagreement.mp3",
+    "text": "I am not quite sure I fully agree with that. Could we discuss it a little bit further?"
+  },
+  {
+    "name": "Summary",
+    "file": "summary.mp3",
+    "text": "So to summarize what we have discussed so far, the main points seem to be very clear now."
+  },
+  {
+    "name": "Redirect",
+    "file": "redirect.mp3",
+    "text": "That is interesting, but let us try to move on to the next topic now, shall we?"
+  },
+  {
+    "name": "Clarify",
+    "file": "clarify.mp3",
+    "text": "What exactly do you mean by that? Could you please elaborate just a little bit more for me?"
+  },
+  {
+    "name": "Encouragement",
+    "file": "encourage.mp3",
+    "text": "You are doing a great job, please keep going. I am listening carefully to everything you say."
+  },
+  {
+    "name": "Closing",
+    "file": "close.mp3",
+    "text": "I think we have covered everything today. Thank you all very much for a great discussion."
+  }
+]

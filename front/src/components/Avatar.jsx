@@ -11,6 +11,120 @@ import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { useChat } from "../hooks/useChat";
 
+// ── Backchannel definitions ──────────────────────────────────────────────────
+// Each entry describes one backchannel cue the avatar can show while the user
+// is talking. They are driven entirely by refs so they don't trigger re-renders.
+const BACKCHANNELS = [
+  // Nod – clear chin-down then back up
+  {
+    id: "nod",
+    weight: 4,
+    trigger: (refs) => {
+      const { headRef, bcHeadTarget } = refs;
+      if (!headRef.current) return;
+      const startX = headRef.current.rotation.x;
+      bcHeadTarget.current.x = startX + 0.42; // ~24° down
+      bcHeadTarget.current.active = true;
+      setTimeout(() => {
+        bcHeadTarget.current.x = startX;
+        setTimeout(() => { bcHeadTarget.current.active = false; }, 450);
+      }, 380);
+    },
+  },
+  // Double nod – two clear dips
+  {
+    id: "double_nod",
+    weight: 3,
+    trigger: (refs) => {
+      const { headRef, bcHeadTarget } = refs;
+      if (!headRef.current) return;
+      const startX = headRef.current.rotation.x;
+      bcHeadTarget.current.active = true;
+      bcHeadTarget.current.x = startX + 0.38;
+      setTimeout(() => {
+        bcHeadTarget.current.x = startX + 0.05; // brief pause at neutral-ish
+        setTimeout(() => {
+          bcHeadTarget.current.x = startX + 0.32;
+          setTimeout(() => {
+            bcHeadTarget.current.x = startX;
+            setTimeout(() => { bcHeadTarget.current.active = false; }, 380);
+          }, 280);
+        }, 300);
+      }, 320);
+    },
+  },
+  // Glance shift – obvious look to one side then back
+  {
+    id: "glance",
+    weight: 2,
+    trigger: (refs) => {
+      const { headRef, bcHeadTarget } = refs;
+      if (!headRef.current) return;
+      const startY = headRef.current.rotation.y;
+      const dir = Math.random() > 0.5 ? 1 : -1;
+      bcHeadTarget.current.active = true;
+      bcHeadTarget.current.y = startY + dir * 0.50; // ~29° turn
+      setTimeout(() => {
+        bcHeadTarget.current.y = startY;
+        setTimeout(() => { bcHeadTarget.current.active = false; }, 550);
+      }, 480);
+    },
+  },
+  // "Uh-huh" – strong brow raise + clear smile
+  {
+    id: "uh_huh",
+    weight: 4,
+    trigger: (refs) => {
+      const { bcMorphRequest } = refs;
+      bcMorphRequest.current = {
+        browInnerUp: 0.80,   // very visible brow raise
+        mouthSmile: 0.50,    // noticeable smile
+      };
+      setTimeout(() => { bcMorphRequest.current = null; }, 900);
+    },
+  },
+  // Head tilt – clear lean to one side
+  {
+    id: "tilt",
+    weight: 2,
+    trigger: (refs) => {
+      const { headRef, bcHeadTarget } = refs;
+      if (!headRef.current) return;
+      const startZ = headRef.current.rotation.z;
+      const dir = Math.random() > 0.5 ? 1 : -1;
+      bcHeadTarget.current.active = true;
+      bcHeadTarget.current.z = startZ + dir * 0.28; // ~16° tilt
+      setTimeout(() => {
+        bcHeadTarget.current.z = startZ;
+        setTimeout(() => { bcHeadTarget.current.active = false; }, 600);
+      }, 750);
+    },
+  },
+  // Nod + brow raise combo
+  {
+    id: "nod_brow",
+    weight: 2,
+    trigger: (refs) => {
+      const { headRef, bcHeadTarget, bcMorphRequest } = refs;
+      if (!headRef.current) return;
+      const startX = headRef.current.rotation.x;
+      bcHeadTarget.current.active = true;
+      bcHeadTarget.current.x = startX + 0.38;
+      bcMorphRequest.current = { browInnerUp: 0.70, mouthSmile: 0.35 };
+      setTimeout(() => {
+        bcHeadTarget.current.x = startX;
+        setTimeout(() => {
+          bcMorphRequest.current = null;
+          setTimeout(() => { bcHeadTarget.current.active = false; }, 400);
+        }, 300);
+      }, 380);
+    },
+  },
+];
+
+// Build a weighted pool for fast random picking
+const BC_POOL = BACKCHANNELS.flatMap((bc) => Array(bc.weight).fill(bc));
+
 const facialExpressions = {
   default: {},
   smile: {
@@ -97,7 +211,18 @@ let setupMode = false;
 export function Avatar(props) {
   const { nodes, materials, scene } = useGLTF("/models/test4.glb");
 
-  const { message, onMessagePlayed, chat } = useChat();
+  const { message, onMessagePlayed, chat, roomState } = useChat();
+
+  // ── Backchannel refs ──────────────────────────────────────────────────────
+  // bcHeadTarget: overrides the normal head rotation during a cue
+  const bcHeadTarget = useRef({ active: false, x: 0, y: 0, z: 0 });
+  // bcMorphRequest: non-null while a morph-target cue is active
+  const bcMorphRequest = useRef(null);
+  // Timer handle for next scheduled backchannel
+  const bcTimerRef = useRef(null);
+  // Keep a stable ref to roomState so the timer callback sees the latest value
+  const roomStateRef = useRef(roomState);
+  useEffect(() => { roomStateRef.current = roomState; }, [roomState]);
 
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
@@ -119,8 +244,14 @@ export function Avatar(props) {
     setAnimation(randomAnimation);
     setFacialExpression(randomExpression);
 
-    const mimeType = message.audio.startsWith("UklGR") ? "audio/wav" : "audio/mpeg";
-    const audio = new Audio(`data:${mimeType};base64,${message.audio}`);
+    // Streaming: audioEl is a pre-created Audio element backed by a MediaSource.
+    // Legacy:    message.audio is a base64-encoded MP3/WAV string.
+    const audio = message.audioEl
+      ? message.audioEl
+      : (() => {
+          const mimeType = message.audio.startsWith("UklGR") ? "audio/wav" : "audio/mpeg";
+          return new Audio(`data:${mimeType};base64,${message.audio}`);
+        })();
 
     // Setup AudioContext for real-time lip sync analysis
     if (!audioContextRef.current) {
@@ -209,65 +340,24 @@ export function Avatar(props) {
   const targetHeadRotation = useRef({ x: 0, y: 0 });
 
   useFrame(() => {
-    !setupMode &&
-      Object.keys(nodes.EyeLeft.morphTargetDictionary).forEach((key) => {
-        const mapping = facialExpressions[facialExpression];
-        if (key === "eyeBlinkLeft" || key === "eyeBlinkRight") {
-          return; // eyes wink/blink are handled separately
-        }
-        if (mapping && mapping[key]) {
-          lerpMorphTarget(key, mapping[key], 0.1);
-        } else {
-          lerpMorphTarget(key, 0, 0.1);
-        }
-      });
+    if (setupMode) return;
+
+    // ── Facial expression morphs (always run) ──────────────────────────────
+    Object.keys(nodes.EyeLeft.morphTargetDictionary).forEach((key) => {
+      const mapping = facialExpressions[facialExpression];
+      if (key === "eyeBlinkLeft" || key === "eyeBlinkRight") return;
+      if (mapping && mapping[key]) {
+        lerpMorphTarget(key, mapping[key], 0.1);
+      } else {
+        lerpMorphTarget(key, 0, 0.1);
+      }
+    });
 
     lerpMorphTarget("eyeBlinkLeft", blink || winkLeft ? 1 : 0, 0.5);
     lerpMorphTarget("eyeBlinkRight", blink || winkRight ? 1 : 0, 0.5);
 
-    // LIPSYNC (Real-time Audio Analysis)
-    if (setupMode || !audio || !analyserRef.current) return;
-
-    let isSpeaking = false;
-    let intensity = 0;
-
-    if (!audio.paused && !audio.ended) {
-      const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
-      analyserRef.current.getByteFrequencyData(dataArray);
-
-      // Calculate average volume (focusing on vocal frequencies)
-      let sum = 0;
-      // Use lower half of frequencies which usually contain human voice
-      const length = dataArray.length / 2;
-      for (let i = 0; i < length; i++) {
-        sum += dataArray[i];
-      }
-      const average = sum / length;
-
-      // Map average (usually 0-150 for speech) to intensity (0-1)
-      const normalizedVolume = average / 100;
-
-      if (normalizedVolume > 0.05) {
-        isSpeaking = true;
-        intensity = Math.min(1.0, normalizedVolume * 0.7 + Math.random() * 0.1);
-      }
-    }
-
-    // Apply animation
-    if (isSpeaking) {
-      lerpMorphTarget("mouthOpen", intensity, 0.35);
-
-      // subtle smile while speaking
-      lerpMorphTarget("mouthSmile", 0.15, 0.15);
-    } else {
-      // relax face
-      lerpMorphTarget("mouthOpen", 0, 0.2);
-      lerpMorphTarget("mouthSmile", 0, 0.2);
-    }
-
-    // Head movement following mouse
+    // ── Ensure Head bone is cached ─────────────────────────────────────────
     if (!headRef.current) {
-      // Find Head bone on first frame
       scene.traverse((child) => {
         if (child.isBone && child.name === "Head") {
           headRef.current = child;
@@ -275,28 +365,80 @@ export function Avatar(props) {
       });
     }
 
+    // ── Determine whether the AVATAR is currently producing audio ──────────
+    let avatarIsSpeaking = false;
+    let lipIntensity = 0;
+
+    if (audio && analyserRef.current && !audio.paused && !audio.ended) {
+      const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+      analyserRef.current.getByteFrequencyData(dataArray);
+      let sum = 0;
+      const length = dataArray.length / 2;
+      for (let i = 0; i < length; i++) sum += dataArray[i];
+      const avg = sum / length;
+      const normalizedVolume = avg / 100;
+      if (normalizedVolume > 0.05) {
+        avatarIsSpeaking = true;
+        lipIntensity = Math.min(1.0, normalizedVolume * 0.7 + Math.random() * 0.1);
+      }
+    }
+
+    // ── Lipsync morph targets ──────────────────────────────────────────────
+    if (avatarIsSpeaking) {
+      lerpMorphTarget("mouthOpen", lipIntensity, 0.35);
+      lerpMorphTarget("mouthSmile", 0.15, 0.15);
+    } else {
+      lerpMorphTarget("mouthOpen", 0, 0.2);
+      // mouthSmile faded by backchannel block below when inactive
+    }
+
+    // ── Backchannel morph targets (always run, not gated by avatar audio) ──
     if (headRef.current) {
-      // Calculate target rotation based on speaking state or mouse position
-      if (isSpeaking) {
-        // Force head turn to the right when speaking (Change 0.5 to -0.5 if it turns the wrong way)
+      if (bcMorphRequest.current && !avatarIsSpeaking) {
+        // Apply backchannel expression only when avatar is NOT speaking
+        Object.entries(bcMorphRequest.current).forEach(([key, val]) => {
+          lerpMorphTarget(key, val, 0.2);
+        });
+      } else if (!avatarIsSpeaking) {
+        // Relax backchannel morphs when idle/listening
+        lerpMorphTarget("browInnerUp", 0, 0.15);
+        lerpMorphTarget("mouthSmile", 0, 0.2);
+      }
+
+      // ── Head rotation ──────────────────────────────────────────────────
+      if (avatarIsSpeaking) {
+        // Avatar speaking: face toward camera
         targetHeadRotation.current.y = 0.5;
-        targetHeadRotation.current.x = 0; // Keep the head level when turned
+        targetHeadRotation.current.x = 0;
+        targetHeadRotation.current.z = 0;
+      } else if (bcHeadTarget.current.active) {
+        // Backchannel cue overrides head direction
+        targetHeadRotation.current.x = bcHeadTarget.current.x ?? headRef.current.rotation.x;
+        targetHeadRotation.current.y = bcHeadTarget.current.y ?? headRef.current.rotation.y;
+        targetHeadRotation.current.z = bcHeadTarget.current.z ?? headRef.current.rotation.z;
       } else {
-        // Limit rotation to realistic angles (max ±0.4 radians)
+        // Default: follow mouse
         targetHeadRotation.current.y = mousePos.x * 0.4;
         targetHeadRotation.current.x = mousePos.y * 0.3;
+        targetHeadRotation.current.z = 0;
       }
 
       // Smoothly interpolate head rotation
+      const lerpSpeed = bcHeadTarget.current.active ? 0.14 : 0.1;
       headRef.current.rotation.y = THREE.MathUtils.lerp(
         headRef.current.rotation.y,
         targetHeadRotation.current.y,
-        0.1,
+        lerpSpeed,
       );
       headRef.current.rotation.x = THREE.MathUtils.lerp(
         headRef.current.rotation.x,
         targetHeadRotation.current.x,
-        0.1,
+        lerpSpeed,
+      );
+      headRef.current.rotation.z = THREE.MathUtils.lerp(
+        headRef.current.rotation.z,
+        targetHeadRotation.current.z ?? 0,
+        lerpSpeed,
       );
     }
   });
@@ -384,6 +526,39 @@ export function Avatar(props) {
     nextBlink();
     return () => clearTimeout(blinkTimeout);
   }, []);
+
+  // ── Backchannel scheduler ─────────────────────────────────────────────────
+  // Fires random cues while the user is talking ("listening") or while the
+  // backend is thinking ("processing") — both phases benefit from visible
+  // non-verbal feedback from the avatar.
+  useEffect(() => {
+    const scheduleNext = (minMs = 2000, maxMs = 5000) => {
+      const delay = THREE.MathUtils.randInt(minMs, maxMs);
+      bcTimerRef.current = setTimeout(() => {
+        const state = roomStateRef.current;
+        if (state === "listening") {
+          // User is speaking → full backchannel repertoire
+          const bc = BC_POOL[Math.floor(Math.random() * BC_POOL.length)];
+          bc.trigger({ headRef, bcHeadTarget, bcMorphRequest });
+          scheduleNext(2000, 5000);
+        } else if (state === "processing") {
+          // Backend thinking → subtle cues (nod / tilt only, faster cadence)
+          const subtleCues = BACKCHANNELS.filter((b) =>
+            ["nod", "tilt", "uh_huh"].includes(b.id)
+          );
+          const bc = subtleCues[Math.floor(Math.random() * subtleCues.length)];
+          bc.trigger({ headRef, bcHeadTarget, bcMorphRequest });
+          scheduleNext(1500, 3500); // slightly faster during "thinking" phase
+        } else {
+          // idle / speaking — don't fire, but keep the loop alive
+          scheduleNext(2000, 5000);
+        }
+      }, delay);
+    };
+
+    scheduleNext();
+    return () => clearTimeout(bcTimerRef.current);
+  }, []); // runs once on mount; roomState read via ref
 
   // Mouse tracking effect
   useEffect(() => {

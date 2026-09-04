@@ -57,6 +57,8 @@ export const ChatProvider = ({ children }) => {
   const [voiceSessionActive, setVoiceSessionActive] = useState(false);
   const [localVoiceStreaming, setLocalVoiceStreaming] = useState(false);
   const [participantEntropies, setParticipantEntropies] = useState({});
+  const [facilitatorLogs, setFacilitatorLogs] = useState([]);
+  const [lastFacilitatorAction, setLastFacilitatorAction] = useState(null);
 
   // ── WebRTC state ────────────────────────────────────────────────────────
   // Map of sessionId → MediaStream (remote video streams)
@@ -72,6 +74,8 @@ export const ChatProvider = ({ children }) => {
   const warmupTimerRef = useRef(null);
   const isWarmingUp = useRef(true);
   const blockedRef = useRef(false);
+  // Map of msgId → { mediaSource, sourceBuffer, audioEl, objectUrl, appendQueue, isAppending, streamEnded }
+  const activeStreamsRef = useRef({});
 
   // peerConnections: Map<sessionId, RTCPeerConnection>
   const peerConnectionsRef = useRef({});
@@ -93,8 +97,49 @@ export const ChatProvider = ({ children }) => {
     setMessages((prev) => [...prev, ...msgs]);
   }, []);
 
+  // Decode a base64 string to an ArrayBuffer (used for MediaSource chunk appending)
+  const base64ToArrayBuffer = useCallback((b64) => {
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes.buffer;
+  }, []);
+
+  // Process the pending chunk queue for a given streaming message.
+  // Must be called whenever: (a) a new chunk is queued, (b) the SourceBuffer
+  // finishes an append (updateend), or (c) the stream is marked as ended.
+  const processStreamQueue = useCallback((msgId) => {
+    const stream = activeStreamsRef.current[msgId];
+    if (!stream || !stream.sourceBuffer || stream.isAppending) return;
+    if (stream.appendQueue.length > 0) {
+      stream.isAppending = true;
+      const chunk = stream.appendQueue.shift();
+      try {
+        stream.sourceBuffer.appendBuffer(chunk);
+      } catch (e) {
+        stream.isAppending = false;
+        console.error("[stream] appendBuffer error:", e);
+      }
+    } else if (stream.streamEnded && stream.mediaSource.readyState === "open") {
+      try {
+        stream.mediaSource.endOfStream();
+      } catch (e) {
+        // Ignore — may already be ended
+      }
+    }
+  }, []);  // stable: only accesses refs
+
   const onMessagePlayed = useCallback(() => {
     setMessages((prev) => {
+      const played = prev[0];
+      // Revoke object URL for streaming messages to free memory
+      if (played?.msgId) {
+        const s = activeStreamsRef.current[played.msgId];
+        if (s?.objectUrl) {
+          URL.revokeObjectURL(s.objectUrl);
+          delete activeStreamsRef.current[played.msgId];
+        }
+      }
       const next = prev.slice(1);
       if (next.length === 0) {
         blockedRef.current = false;
@@ -411,6 +456,24 @@ export const ChatProvider = ({ children }) => {
           }));
           break;
 
+        case "facilitator_log":
+          setFacilitatorLogs((prev) => {
+            const entry = {
+              id: Date.now() + Math.random(),
+              message: data.message,
+              level: data.level ?? "info",
+              timestamp: data.timestamp ?? new Date().toISOString(),
+            };
+            // Keep max 80 entries (ring buffer)
+            const next = [...prev, entry];
+            return next.length > 80 ? next.slice(next.length - 80) : next;
+          });
+          break;
+
+        case "facilitator_action":
+          setLastFacilitatorAction(data.action ?? null);
+          break;
+
         // ── WebRTC signaling ───────────────────────────────────────────
         case "webrtc_offer": {
           const pc = createPeerConnection(data.fromSessionId);
@@ -474,6 +537,7 @@ export const ChatProvider = ({ children }) => {
         case "turn_started":
           if (!blockedRef.current) setRoomState("listening");
           setParticipants(data.participants);
+          setLastFacilitatorAction(null); // clear action badge on new turn
           break;
 
         case "turn_processing":
@@ -490,11 +554,90 @@ export const ChatProvider = ({ children }) => {
           if (!blockedRef.current) setRoomState("idle");
           break;
 
+        case "turn_interrupted":
+          // Stop any active streams
+          Object.values(activeStreamsRef.current).forEach(s => {
+             s.audioEl?.pause();
+             if (s.objectUrl) URL.revokeObjectURL(s.objectUrl);
+          });
+          activeStreamsRef.current = {};
+          setMessages([]);
+          setMessage(null);
+          setLoading(false);
+          blockedRef.current = false;
+          setRoomState("listening");
+          break;
+
         case "messages":
+          // Legacy path (kept for backward compatibility / non-streaming fallback)
           setLoading(false);
           setModelTranscripts(data.messages.map((m) => m.text));
           addMessages(data.messages);
           break;
+
+        // ── TTS streaming ─────────────────────────────────────────────
+        case "audio_stream_start": {
+          const { msgId, text, idx } = data;
+          if (idx === 0) {
+            setLoading(false);
+            setModelTranscripts([text]);
+            blockedRef.current = true;
+            setRoomState("speaking");
+          }
+          try {
+            const mediaSource = new MediaSource();
+            const objectUrl = URL.createObjectURL(mediaSource);
+            const audioEl = new Audio(objectUrl);
+            const streamState = {
+              mediaSource,
+              sourceBuffer: null,
+              audioEl,
+              objectUrl,
+              appendQueue: [],
+              isAppending: false,
+              streamEnded: false,
+            };
+            activeStreamsRef.current[msgId] = streamState;
+            mediaSource.addEventListener("sourceopen", () => {
+              try {
+                const sb = mediaSource.addSourceBuffer("audio/mpeg");
+                streamState.sourceBuffer = sb;
+                sb.addEventListener("updateend", () => {
+                  streamState.isAppending = false;
+                  processStreamQueue(msgId);
+                });
+                // Drain any chunks that arrived before sourceopen fired
+                processStreamQueue(msgId);
+              } catch (e) {
+                console.error("[stream] SourceBuffer setup error:", e);
+              }
+            });
+            // Queue message for Avatar (audioEl replaces base64 audio)
+            addMessages([{ text, msgId, audioEl }]);
+          } catch (e) {
+            console.error("[stream] MediaSource creation error:", e);
+          }
+          break;
+        }
+
+        case "audio_stream_chunk": {
+          const { msgId, data: chunkB64 } = data;
+          const stream = activeStreamsRef.current[msgId];
+          if (!stream) break;
+          const bytes = base64ToArrayBuffer(chunkB64);
+          stream.appendQueue.push(bytes);
+          processStreamQueue(msgId);
+          break;
+        }
+
+        case "audio_stream_end": {
+          const { msgId } = data;
+          const stream = activeStreamsRef.current[msgId];
+          if (!stream) break;
+          stream.streamEnded = true;
+          processStreamQueue(msgId);
+          break;
+        }
 
         case "error":
           console.error("Server error:", data.detail);
@@ -510,7 +653,7 @@ export const ChatProvider = ({ children }) => {
           break;
       }
     },
-    [addMessages, callPeer, createPeerConnection],
+    [addMessages, callPeer, createPeerConnection, processStreamQueue, base64ToArrayBuffer],
   );
 
   // ── Audio streaming ───────────────────────────────────────────────────
@@ -682,6 +825,8 @@ export const ChatProvider = ({ children }) => {
         webcamStream,
         toggleWebcam,
         remoteStreams, // { [sessionId]: MediaStream }
+        facilitatorLogs,
+        lastFacilitatorAction,
       }}
     >
       {children}

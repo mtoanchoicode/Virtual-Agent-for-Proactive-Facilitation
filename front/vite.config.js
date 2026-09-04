@@ -43,6 +43,15 @@ export default defineConfig({
         ws: true,
         secure: false,
       },
+      "/ws/mic_test": {
+        target: "wss://127.0.0.1:3000",
+        ws: true,
+        secure: false,
+      },
+      "/room": {
+        target: "https://127.0.0.1:3000",
+        secure: false,
+      },
     },
   },
   optimizeDeps: {

@@ -1,3 +1,5 @@
+import os
+import base64
 import asyncio
 import io
 import json
@@ -9,9 +11,10 @@ from typing import List, Optional, Dict, Set
 
 from fastapi import WebSocket
 
-from app.core.config import client, SAMPLE_RATE, ROOM_SILENCE_THRESHOLD_MS
-from app.services.llm_service import shared_conv, process_message
-from app.services.audio_service import is_speech_present, whisper_model
+from app.core.config import client, SAMPLE_RATE, ROOM_SILENCE_THRESHOLD_MS, IMBALANCE_WORD_THRESHOLD, SUMMARY_TRIGGERS
+from app.services.llm_service import shared_conv
+from app.services.audio_service import is_speech_present, whisper_model, stream_audio_chunks
+from app.utils.helpers import clean_transcript
 
 def extract_messages_from_json(json_string: str) -> List[dict]:
     messages = []
@@ -48,6 +51,57 @@ def extract_messages_from_json(json_string: str) -> List[dict]:
                 brace_level -= 1
     return messages
 
+
+# ---------------------------------------------------------------------------
+# Per-turn timing log
+# ---------------------------------------------------------------------------
+_TIMING_LOG_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "timing_log.txt",
+)
+
+def _write_timing_log(timing: dict) -> None:
+    """Append a structured per-step timing breakdown for one facilitator turn to timing_log.txt."""
+    t0 = timing["t_silence"]
+
+    def rel(key: str) -> str:
+        v = timing.get(key)
+        return f"{v - t0:7.3f}s" if v is not None else "    N/A "
+
+    def gap(key_a: str, key_b: str) -> str:
+        a, b = timing.get(key_a), timing.get(key_b)
+        return f"({b - a:+.3f}s)" if a is not None and b is not None else "        "
+
+    lines = [
+        "",
+        "=" * 65,
+        f"  Turn #{timing['turn_n']:03d}  ·  {datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')}",
+        f"  Action : {timing['action']}",
+        f"  Text   : \"{timing['text_snippet']}\"",
+        "=" * 65,
+        f"  {'Checkpoint':<28} {'From silence':>12}   {'Step delta':>12}",
+        f"  {'-' * 55}",
+        f"  {'Silence detected':<28} {'  0.000s':>12}",
+        f"  {'Processing start':<28} {rel('t_process_start'):>12}   {gap('t_silence', 't_process_start'):>12}",
+        f"  {'STT tasks done':<28} {rel('t_stt_done'):>12}   {gap('t_process_start', 't_stt_done'):>12}",
+        f"  {'LLM first token':<28} {rel('t_llm_first_token'):>12}   {gap('t_stt_done', 't_llm_first_token'):>12}",
+        f"  {'LLM action parsed':<28} {rel('t_action_found'):>12}   {gap('t_llm_first_token', 't_action_found'):>12}",
+        f"  {'LLM stream done':<28} {rel('t_llm_stream_done'):>12}   {gap('t_action_found', 't_llm_stream_done'):>12}",
+        f"  {'TTS start  (chunk 0)':<28} {rel('t_tts_start'):>12}   {gap('t_llm_stream_done', 't_tts_start'):>12}",
+        f"  {'TTS first chunk sent':<28} {rel('t_tts_first_chunk'):>12}   {gap('t_tts_start', 't_tts_first_chunk'):>12}",
+        f"  {'TTS stream done':<28} {rel('t_tts_done'):>12}   {gap('t_tts_first_chunk', 't_tts_done'):>12}",
+        f"  {'-' * 55}",
+        f"  {'TOTAL  silence → first audio':<28} {rel('t_tts_first_chunk'):>12}",
+        "=" * 65,
+        "",
+    ]
+    try:
+        with open(_TIMING_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+    except Exception as exc:
+        print(f"[timing] Failed to write timing_log.txt: {exc}")
+
+
 class Participant:
     def __init__(self, session_id: str, name: str, websocket: WebSocket):
         self.session_id = session_id
@@ -61,8 +115,10 @@ class Participant:
         self.entropy: int = 0
         self.transcripts: Dict[int, str] = {}
         self.chunk_index: int = 0
+        self.word_count: int = 0
         self.pending_tasks: Set[asyncio.Task] = set()
         self.last_speech_time: float = 0.0
+        self.interruption_start_time: float = 0.0
 
     def to_dict(self) -> dict:
         return {
@@ -81,13 +137,13 @@ class Room:
         self.voice_session_active: bool = False
         self._turn_active: bool = False
         self._silence_timer: Optional[asyncio.TimerHandle] = None
-        self._processing: bool = False
-        self._intervention_needed: bool = False
-        self._monitor_task: Optional[asyncio.Task] = None
         self._turn_lock = asyncio.Lock()  # Serialises entry into _on_room_silence
-        # Cooldown flag: True after AI speaks. Monitor loop is dormant while True.
-        # Cleared only when a human participant starts speaking again.
-        self._waiting_for_user_speech: bool = False
+        self._processing: bool = False  # True while a turn is being processed
+        self._interrupted: bool = False
+        self._current_turn_task: Optional[asyncio.Task] = None
+        self._tts_tasks: Set[asyncio.Task] = set()
+        self._turn_count: int = 0
+        self.mode: str = "full"  # "full" or "lite"
 
     async def add(self, participant: Participant) -> None:
         async with self._lock:
@@ -120,6 +176,16 @@ class Room:
         for sid in dead:
             await self.remove(sid)
 
+    async def broadcast_log(self, message: str, level: str = "info") -> None:
+        """Print to terminal AND stream to all connected frontends."""
+        print(message)
+        await self.broadcast({
+            "type": "facilitator_log",
+            "message": message,
+            "level": level,
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+        })
+
     async def send_to(self, session_id: str, payload: dict) -> None:
         p = self.get(session_id)
         if p:
@@ -132,12 +198,11 @@ class Room:
         if self.voice_session_active:
             return
         self.voice_session_active = True
-        self._monitor_task = asyncio.create_task(self._proactive_monitor_loop())
         await self.broadcast({
             "type": "voice_session_started",
             "participants": self.participant_list(),
         })
-        print("[room] voice session started")
+        await self.broadcast_log("[room] Voice session started", "success")
 
     async def deactivate_voice_session(self) -> None:
         if not self.voice_session_active:
@@ -145,9 +210,6 @@ class Room:
         self.voice_session_active = False
         self._cancel_silence_timer()
         self._turn_active = False
-        if self._monitor_task:
-            self._monitor_task.cancel()
-            self._monitor_task = None
         for p in self._participants.values():
             p.audio_chunks.clear()
             p.is_speaking = False
@@ -156,16 +218,14 @@ class Room:
             p.pending_tasks.clear()
             p.transcripts.clear()
             p.chunk_index = 0
+            p.word_count = 0
         await self.broadcast({
             "type": "voice_session_ended",
             "participants": self.participant_list(),
         })
-        print("[room] voice session ended")
+        await self.broadcast_log("[room] Voice session ended", "info")
 
     async def ingest_audio(self, session_id: str, pcm_bytes: bytes) -> None:
-        if self._processing:
-            return
-
         p = self.get(session_id)
         if p is None or not p.mic_active:
             return
@@ -175,11 +235,41 @@ class Room:
 
         if speaking:
             p.last_speech_time = now
-            # Re-arm monitoring: if we were in cooldown waiting for a human
-            # to speak again, their speech clears the cooldown.
-            if self._waiting_for_user_speech:
-                print(f"[room] Re-armed monitoring — {p.name} started speaking after AI cooldown")
-                self._waiting_for_user_speech = False
+
+        if self._processing:
+            # Smooth the speaking signal: if they spoke within the last 500ms, consider it a continuous burst
+            if (now - p.last_speech_time) < 0.3:
+                if p.interruption_start_time == 0.0:
+                    p.interruption_start_time = now
+                    print(f"[room] Interruption timer started for {p.name}")
+                
+                p.audio_chunks.extend(pcm_bytes)
+                
+                if now - p.interruption_start_time >= 0.6:  # 600ms threshold
+                    print(f"[room] Interruption threshold met for {p.name}! Cancelling turn.")
+                    p.interruption_start_time = 0.0
+                    if not self._interrupted:
+                        self._interrupted = True
+                        if self._current_turn_task and not self._current_turn_task.done():
+                            self._current_turn_task.cancel()
+                        
+                        for tts_task in list(self._tts_tasks):
+                            if not tts_task.done():
+                                tts_task.cancel()
+                        self._tts_tasks.clear()
+                        
+                        self._processing = False
+                        self._turn_active = True
+                        
+                        await self.broadcast({
+                            "type": "turn_interrupted",
+                            "participants": self.participant_list(),
+                        })
+                        await self.broadcast_log(f"[room] Thinking interrupted by {p.name}", "warning")
+                        self._reset_silence_timer()
+            else:
+                p.interruption_start_time = 0.0
+            return
 
         if speaking != p.is_speaking:
             p.is_speaking = speaking
@@ -200,7 +290,7 @@ class Room:
                     "type": "turn_started",
                     "participants": self.participant_list(),
                 })
-                print("[room] turn started")
+                await self.broadcast_log(f"[room] Turn started — {p.name} speaking", "info")
 
             if self._turn_active and speaking:
                 self._reset_silence_timer()
@@ -233,42 +323,47 @@ class Room:
             self._silence_timer = None
 
     async def _on_room_silence(self) -> None:
-        # Use a lock so only one caller (silence timer OR monitor loop)
-        # can enter the check-and-set section at a time.
+        """Triggered by the silence timer after the user stops talking.
+        Runs transcription + AI facilitation for the current turn.
+        Immediately ready for the next turn when done — no cooldown.
+        """
+        t_silence = time.time()  # Exact moment silence was detected — used as T=0 for latency
         async with self._turn_lock:
             if self._processing:
                 return
-            # Allow entry when a turn was active OR the monitor flagged intervention
-            if not self._turn_active and not self._intervention_needed:
+            if not self._turn_active:
                 return
 
             has_audio = any(
                 len(p.audio_chunks) > 0 or len(p.transcripts) > 0 or len(p.pending_tasks) > 0
                 for p in self._participants.values()
             )
-            if not has_audio and not self._intervention_needed:
+            if not has_audio:
                 self._turn_active = False
                 return
 
             self._turn_active = False
             self._processing = True
 
-        # Lock released — safe to do long-running work; _processing flag
-        # prevents any second caller from proceeding.
+        self._interrupted = False
         await self.broadcast({"type": "turn_processing"})
-        print("[room] turn ended — processing AI response")
+        await self.broadcast_log("[room] Turn ended — processing AI response…", "info")
 
         try:
-            await self._process_turn()
+            self._current_turn_task = asyncio.create_task(self._process_turn(t_silence))
+            await self._current_turn_task
+        except asyncio.CancelledError:
+            print("[room] _process_turn was cancelled due to interruption.")
         finally:
-            self._processing = False
-            self._intervention_needed = False  # Always clear after a turn completes
-            for p in self._participants.values():
-                p.audio_chunks.clear()
-                p.is_speaking = False
-                p.transcripts.clear()
-                p.chunk_index = 0
-                p.pending_tasks.clear()
+            self._current_turn_task = None
+            if not self._interrupted:
+                self._processing = False
+                for p in self._participants.values():
+                    p.audio_chunks.clear()
+                    p.is_speaking = False
+                    p.transcripts.clear()
+                    p.chunk_index = 0
+                    p.pending_tasks.clear()
 
     async def _transcribe_bg(self, p: Participant, chunk_data: bytes, chunk_idx: int) -> None:
         print(f"[room][{p.name}] starting bg transcription for chunk {chunk_idx} (size {len(chunk_data)})")
@@ -289,6 +384,7 @@ class Room:
                 loop = asyncio.get_running_loop()
                 def do_transcribe():
                     buf.seek(0)
+                    # beam_size=1 (greedy) is 3-5x faster than beam_size=5 with minimal accuracy loss
                     segments, info = whisper_model.transcribe(buf, beam_size=5, language="en")
                     return " ".join([segment.text for segment in segments])
                 text = await loop.run_in_executor(None, do_transcribe)
@@ -301,75 +397,221 @@ class Room:
                 )
                 text = res.text.strip()
                 
-            print(f"[room][{p.name}] bg transcription {chunk_idx} done: '{text}'")
+            text = clean_transcript(text)
+            await self.broadcast_log(f"[transcript] {p.name}: \"{text}\"", "info")
             if text:
                 p.transcripts[chunk_idx] = text
         except Exception as e:
             print(f"[room] background transcription error for {p.name}: {e}")
 
-    async def _proactive_monitor_loop(self) -> None:
-        while self.voice_session_active:
-            await asyncio.sleep(3.0)
 
-            # ── Guard 1: Don't poll while a turn is being processed ──
-            if self._processing:
-                continue
+    async def _process_and_broadcast(self, idx: int, text: str, timing: dict) -> None:
+        """Stream TTS audio chunks to all clients as edge-tts yields them.
+        Runs as a background task so sentence N+1 can stream while N plays."""
+        try:
+            if idx == 0:
+                timing["t_tts_start"] = time.time()
 
-            # ── Guard 2: Cooldown — don't poll until a human speaks again ──
-            if self._waiting_for_user_speech:
-                print("[monitor] Skipping poll — in cooldown, waiting for user to speak again")
-                continue
+            msg_id = f"{timing['turn_n']}_{idx}"
 
-            # ── Guard 3: Don't poll if a turn is active (someone is talking) ──
-            if self._turn_active:
-                continue
+            # Signal frontend to create MediaSource + Audio element immediately
+            await self.broadcast({
+                "type": "audio_stream_start",
+                "msgId": msg_id,
+                "text": text,
+                "idx": idx,
+            })
 
-            ongoing_texts = []
-            metadata_parts = []
-            now = time.time()
+            chunk_count = 0
+            async for audio_chunk in stream_audio_chunks(text):
+                encoded = base64.b64encode(audio_chunk).decode("utf-8")
+                await self.broadcast({
+                    "type": "audio_stream_chunk",
+                    "msgId": msg_id,
+                    "data": encoded,
+                })
+                if chunk_count == 0 and idx == 0:
+                    # Record when first bytes hit the wire — this is TTFA
+                    timing["t_tts_first_chunk"] = time.time()
+                chunk_count += 1
 
-            for p in self._participants.values():
-                sorted_texts = [p.transcripts[k] for k in sorted(p.transcripts.keys())]
-                text = " ".join(sorted_texts).strip()
-                if text:
-                    ongoing_texts.append(f"{p.name} said: {text}")
-                
-                if p.last_speech_time > 0:
-                    time_since_speech = now - p.last_speech_time
-                    metadata_parts.append(f"User '{p.name}' last spoke {time_since_speech:.1f} seconds ago.")
-                else:
-                    metadata_parts.append(f"User '{p.name}' has not spoken recently.")
+            await self.broadcast({
+                "type": "audio_stream_end",
+                "msgId": msg_id,
+            })
 
-            combined_ongoing = "\n".join(ongoing_texts)
-            metadata = "[METADATA]\n" + "\n".join(metadata_parts)
-            
+            if idx == 0:
+                timing["t_tts_done"] = time.time()
+                first = timing.get("t_tts_first_chunk") or timing["t_tts_done"]
+                total = first - timing["t_silence"]
+                print(f"[LATENCY] Turn #{timing['turn_n']:03d}  silence→first audio: {total:.2f}s")
+                _write_timing_log(timing)
+        except asyncio.CancelledError:
+            print(f"[room] TTS stream {idx} was cancelled due to interruption.")
+            raise
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            print(f"[room] ERROR in _process_and_broadcast chunk {idx}: {e}")
+
+    async def _process_turn(self, silence_at: float) -> None:
+        """Route to full or lite processing based on room.mode."""
+        if self.mode == "lite":
+            await self._process_turn_lite(silence_at)
+        else:
+            await self._process_turn_full(silence_at)
+
+    async def _process_turn_lite(self, silence_at: float) -> None:
+        """Lite Mode: simple LLM prompt, always speaks, no action parsing."""
+        await self.broadcast_log("[room][lite] Processing turn…", "info")
+        t_process_start = time.time()
+        self._turn_count += 1
+        timing: dict = {
+            "turn_n":              self._turn_count,
+            "t_silence":           silence_at,
+            "t_process_start":     t_process_start,
+            "t_stt_done":          None,
+            "t_llm_first_token":   None,
+            "t_action_found":      None,
+            "t_llm_stream_done":   None,
+            "t_tts_start":         None,
+            "t_tts_first_chunk":   None,
+            "t_tts_done":          None,
+            "action":              "LITE",
+            "text_snippet":        "",
+        }
+        transcripts: List[dict] = []
+
+        # Finalize remaining audio
+        for p in self._participants.values():
+            if len(p.audio_chunks) > 0:
+                chunk_data = bytes(p.audio_chunks)
+                p.audio_chunks.clear()
+                if len(chunk_data) > 3200:
+                    idx = p.chunk_index
+                    p.chunk_index += 1
+                    task = asyncio.create_task(self._transcribe_bg(p, chunk_data, idx))
+                    p.pending_tasks.add(task)
+                    task.add_done_callback(p.pending_tasks.discard)
+
+        # Wait for background transcriptions
+        all_tasks = []
+        for p in self._participants.values():
+            all_tasks.extend(list(p.pending_tasks))
+        if all_tasks:
             try:
-                prompt = shared_conv.get_lightweight_polling_prompt(combined_ongoing, metadata)
-                res = await client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=prompt,
-                    max_tokens=10,
+                await asyncio.wait_for(
+                    asyncio.gather(*all_tasks, return_exceptions=True),
+                    timeout=1.5,
                 )
-                answer = res.choices[0].message.content.strip().upper()
-                print(f"[monitor] Lightweight Model polling... answer={answer}")
-                if "YES" in answer:
-                    # Double-check guards haven't changed while we were awaiting the API
-                    if self._processing or self._waiting_for_user_speech or self._turn_active:
-                        print("[monitor] Ignoring YES — state changed during API call")
-                        continue
-                    self._intervention_needed = True
-                    print("[monitor] Triggering proactive intervention")
-                    asyncio.create_task(self._on_room_silence())
-                else:
-                    self._intervention_needed = False
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                print(f"[monitor] Proactive monitor error: {e}")
+            except asyncio.TimeoutError:
+                print("[room][lite] STT tasks timed out after 1.5s")
 
-    async def _process_turn(self) -> None:
-        print("[room] _process_turn started")
-        start_time = time.time()
+        timing["t_stt_done"] = time.time()
+
+        # Collect transcripts
+        for p in self._participants.values():
+            sorted_texts = [p.transcripts[k] for k in sorted(p.transcripts.keys())]
+            text = " ".join(sorted_texts).strip()
+            if text:
+                transcripts.append({"speaker": p.name, "text": text})
+            p.transcripts.clear()
+            p.chunk_index = 0
+            p.pending_tasks.clear()
+
+        if not transcripts:
+            print("[room][lite] no transcribable audio — skipping")
+            await self.broadcast({"type": "turn_skipped"})
+            return
+
+        shared_conv.add_turn(transcripts)
+        await self.broadcast({"type": "turn_transcripts", "transcripts": transcripts})
+        await self.broadcast_log(f"[room][lite] Transcripts collected ({len(transcripts)} speaker(s))", "info")
+
+        try:
+            prompt = shared_conv.get_lite_prompt()
+            await self.broadcast_log("[room][lite] Generating AI response…", "info")
+            response = await client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=prompt,
+                max_tokens=150,
+                stream=True,
+            )
+
+            full_text = ""
+            current_sentence = ""
+            msg_index = 0
+
+            async for chunk in response:
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta.content or ""
+
+                if timing["t_llm_first_token"] is None and delta:
+                    timing["t_llm_first_token"] = time.time()
+
+                full_text += delta
+                current_sentence += delta
+
+                # Stream sentences to TTS as they complete
+                match = re.search(r'([.?!]+)["\')]*\s+$', current_sentence)
+                if match:
+                    text_to_process = current_sentence.strip()
+                    if text_to_process:
+                        if msg_index == 0:
+                            timing["text_snippet"] = text_to_process[:60]
+                        task = asyncio.create_task(
+                            self._process_and_broadcast(msg_index, text_to_process, timing)
+                        )
+                        self._tts_tasks.add(task)
+                        task.add_done_callback(self._tts_tasks.discard)
+                        msg_index += 1
+                    current_sentence = ""
+
+            timing["t_llm_stream_done"] = time.time()
+
+            # Flush remainder
+            if current_sentence.strip():
+                text_to_process = current_sentence.strip()
+                if msg_index == 0:
+                    timing["text_snippet"] = text_to_process[:60]
+                task = asyncio.create_task(
+                    self._process_and_broadcast(msg_index, text_to_process, timing)
+                )
+                self._tts_tasks.add(task)
+                task.add_done_callback(self._tts_tasks.discard)
+
+            if not full_text.strip():
+                await self.broadcast({"type": "turn_skipped"})
+            else:
+                timing["action"] = "LITE"
+                shared_conv.add_lite_ai_response(full_text.strip())
+                await self.broadcast({"type": "facilitator_action", "action": "LITE"})
+                await self.broadcast_log("[room][lite] AI spoke — ready for next turn", "success")
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            await self.broadcast({"type": "error", "detail": str(e)})
+
+    async def _process_turn_full(self, silence_at: float) -> None:
+
+        await self.broadcast_log("[room] Processing turn…", "info")
+        t_process_start = time.time()
+        self._turn_count += 1
+        timing: dict = {
+            "turn_n":              self._turn_count,
+            "t_silence":           silence_at,
+            "t_process_start":     t_process_start,
+            "t_stt_done":          None,
+            "t_llm_first_token":   None,
+            "t_action_found":      None,
+            "t_llm_stream_done":   None,
+            "t_tts_start":         None,
+            "t_tts_first_chunk":   None,   # when first audio bytes hit the wire (= TTFA)
+            "t_tts_done":          None,
+            "action":              "NO_ACTION",
+            "text_snippet":        "",
+        }
         transcripts: List[dict] = []
 
         # Finalize any remaining audio chunks into transcription tasks
@@ -391,29 +633,38 @@ class Room:
             
         if all_tasks:
             print(f"[room] waiting for {len(all_tasks)} background transcription tasks to complete...")
-            await asyncio.gather(*all_tasks, return_exceptions=True)
-            print("[room] all background tasks completed")
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*all_tasks, return_exceptions=True),
+                    timeout=1.5,  # reduced from 3s — proceed with available transcripts sooner
+                )
+                print("[room] all background tasks completed")
+            except asyncio.TimeoutError:
+                print("[room] STT tasks timed out after 1.5s — proceeding with available transcripts")
 
-        # Collect transcripts
+        timing["t_stt_done"] = time.time()
+
+        # Collect transcripts and update word counts
         for p in self._participants.values():
             sorted_texts = [p.transcripts[k] for k in sorted(p.transcripts.keys())]
             text = " ".join(sorted_texts).strip()
             if text:
                 transcripts.append({"speaker": p.name, "text": text})
+                # Add word count (split by spaces)
+                p.word_count += len(text.split())
             p.transcripts.clear()
             p.chunk_index = 0
             p.pending_tasks.clear()
 
         has_transcripts = len(transcripts) > 0
-        is_proactive = self._intervention_needed
 
-        # Nothing to do: no user speech and no proactive intervention
-        if not has_transcripts and not is_proactive:
-            print("[room] no transcribable audio and no intervention needed — skipping")
+        # Skip if there's nothing to work with
+        if not has_transcripts:
+            print("[room] no transcribable audio — skipping")
             await self.broadcast({"type": "turn_skipped"})
             return
 
-        print(f"[room] Transcripts collected: {transcripts} | proactive={is_proactive}")
+        await self.broadcast_log(f"[room] Transcripts collected ({len(transcripts)} speaker(s))", "info")
 
         # Add user transcripts to conversation history
         if has_transcripts:
@@ -433,8 +684,35 @@ class Room:
                 metadata_parts.append(f"User '{p.name}' last spoke {time_since_speech:.1f} seconds ago.")
             metadata = "[METADATA]\n" + "\n".join(metadata_parts)
 
-            print("[room] Generating main AI response (streaming)...")
-            prompt = shared_conv.get_facilitation_prompt("", metadata)
+            # Detect imbalance
+            quiet_target = None
+            active_participants = self.active_participants
+            if len(active_participants) == 2:
+                p1, p2 = active_participants
+                if p1.word_count - p2.word_count >= IMBALANCE_WORD_THRESHOLD:
+                    quiet_target = p2.name
+                elif p2.word_count - p1.word_count >= IMBALANCE_WORD_THRESHOLD:
+                    quiet_target = p1.name
+            
+            # Detect summary keywords in current turn
+            force_summarize = False
+            for t in transcripts:
+                text_lower = t["text"].lower()
+                if any(trigger in text_lower for trigger in SUMMARY_TRIGGERS):
+                    force_summarize = True
+                    break
+
+            if force_summarize:
+                await self.broadcast_log("[room] Keyword trigger detected. Forcing SUMMARIZE.", "warning")
+            elif quiet_target:
+                await self.broadcast_log(f"[room] Imbalance detected. Forcing ENCOURAGE for {quiet_target}", "warning")
+
+            await self.broadcast_log("[room] Generating AI response…", "info")
+            prompt = shared_conv.get_facilitation_prompt(
+                metadata, 
+                force_encourage_target=quiet_target,
+                force_summarize=force_summarize
+            )
             response = await client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=prompt,
@@ -453,6 +731,10 @@ class Room:
                 if not chunk.choices:
                     continue
                 delta = chunk.choices[0].delta.content or ""
+
+                # Record time of very first LLM token
+                if timing["t_llm_first_token"] is None and delta:
+                    timing["t_llm_first_token"] = time.time()
                 
                 if not action_found:
                     buffer += delta
@@ -460,7 +742,9 @@ class Room:
                     if match:
                         action_match = re.search(r"(?i)ACTION:\s*([a-zA-Z_]+)", buffer)
                         action = action_match.group(1).upper() if action_match else "UNKNOWN"
-                        print(f"[room] AI decision action (streamed): {action}")
+                        timing["t_action_found"] = time.time()
+                        await self.broadcast_log(f"[room] AI action decided: {action}", "success" if action != "NO_ACTION" else "info")
+                        await self.broadcast({"type": "facilitator_action", "action": action})
                         action_found = True
                         current_sentence = buffer[match.end():]
                         buffer = ""
@@ -469,28 +753,23 @@ class Room:
                 
                 # Only process text chunks if the AI decided to take an action
                 if action_found and action != "NO_ACTION":
-                    match = re.search(r'([.?!]+)["\')\]]*\s+$', current_sentence)
+                    match = re.search(r'([.?!]+)["\')]*\s+$', current_sentence)
                     if match:
                         text_to_process = current_sentence.strip()
                         if text_to_process:
+                            if msg_index == 0:
+                                timing["text_snippet"] = text_to_process[:60]
                             ai_text_parts.append(text_to_process)
-                            print(f"[room] processing chunk {msg_index}...")
-                            try:
-                                res_msg = await asyncio.wait_for(process_message(msg_index, {"text": text_to_process}), timeout=30.0)
-                                print(f"[room] chunk {msg_index} processed, broadcasting...")
-                                await self.broadcast({
-                                    "type": "messages",
-                                    "messages": [res_msg],
-                                })
-                                if msg_index == 0:
-                                    elapsed = time.time() - start_time
-                                    print(f"[room] Time to first response sent to frontend: {elapsed:.2f}s")
-                            except asyncio.TimeoutError:
-                                print(f"[room] TIMEOUT processing chunk {msg_index}, skipping.")
-                            except Exception as e:
-                                print(f"[room] ERROR processing chunk {msg_index}: {e}")
+                            # Fire TTS as a background task — don't block the LLM stream
+                            task = asyncio.create_task(
+                                self._process_and_broadcast(msg_index, text_to_process, timing)
+                            )
+                            self._tts_tasks.add(task)
+                            task.add_done_callback(self._tts_tasks.discard)
                             msg_index += 1
                         current_sentence = ""
+
+            timing["t_llm_stream_done"] = time.time()
 
             # Flush remainder
             if not action_found:
@@ -505,41 +784,38 @@ class Room:
 
             # If LLM chose NO_ACTION, don't process remaining text
             if action == "NO_ACTION":
-                print("[room] AI chose NO_ACTION — not speaking")
+                await self.broadcast_log("[room] AI chose NO_ACTION — silent", "info")
+                shared_conv.add_ai_response(action, "(remains silent)")
                 await self.broadcast({"type": "turn_skipped"})
-                total_elapsed = time.time() - start_time
-                print(f"[room] Total turn processing time: {total_elapsed:.2f}s")
                 return
 
             if current_sentence.strip():
                 text_to_process = current_sentence.strip()
+                if msg_index == 0:
+                    timing["text_snippet"] = text_to_process[:60]
                 ai_text_parts.append(text_to_process)
-                print(f"[room] processing chunk {msg_index}...")
-                try:
-                    res_msg = await asyncio.wait_for(process_message(msg_index, {"text": text_to_process}), timeout=30.0)
-                    await self.broadcast({
-                        "type": "messages",
-                        "messages": [res_msg],
-                    })
-                    if msg_index == 0:
-                        elapsed = time.time() - start_time
-                        print(f"[room] Time to first response sent to frontend: {elapsed:.2f}s")
-                except Exception as e:
-                    print(f"[room] ERROR processing chunk {msg_index}: {e}")
+                # Fire TTS as a background task — don't block the LLM stream flush
+                task = asyncio.create_task(
+                    self._process_and_broadcast(msg_index, text_to_process, timing)
+                )
+                self._tts_tasks.add(task)
+                task.add_done_callback(self._tts_tasks.discard)
 
             if not ai_text_parts:
                 print("[room] AI returned empty text, broadcasting turn_skipped")
                 await self.broadcast({"type": "turn_skipped"})
             else:
                 ai_text = " ".join(ai_text_parts).strip()
+                timing["action"] = action
                 shared_conv.add_ai_response(action, ai_text)
+                await self.broadcast_log("[room] AI spoke — ready for next turn", "success")
 
-                # ── Enter cooldown: don't intervene again until a human speaks ──
-                self._waiting_for_user_speech = True
-                print("[room] AI spoke — entering cooldown (waiting for user speech to re-arm)")
+            # Reset word counts if action was ENCOURAGE
+            if action == "ENCOURAGE":
+                for p in self._participants.values():
+                    p.word_count = 0
+                await self.broadcast_log("[room] Reset all word counts to 0 after ENCOURAGE", "info")
 
-            total_elapsed = time.time() - start_time
-            print(f"[room] Total turn processing time: {total_elapsed:.2f}s")
         except Exception as e:
             import traceback
             traceback.print_exc()

@@ -11,6 +11,8 @@ This paper was accepted at **ASIMOV 2026** (Workshop on Adaptive Social Interact
 
 ## System Overview
 
+![UI Screenshot](./image/Screenshot%202026-09-04%20225102.jpg)
+
 ![System Framework](./overall_pipeline.jpg)
 
 The system is a web application split into two parts that run simultaneously:
@@ -42,10 +44,6 @@ Install the following tools **before** starting. Each item links to its official
 
 ## Installation & Setup
 
-> **Important:** You will need **three separate terminal windows** open at the same time to run the full system. The steps below guide you through each one.
-
----
-
 ### Step 1 — Clone the Repository
 
 ```bash
@@ -55,112 +53,26 @@ cd Virtual-Agent-for-Proactive-Facilitation
 
 ---
 
-### Step 2 — Generate SSL Certificates (Do this once)
+### Step 2 — Run the Setup Script
 
-The browser requires HTTPS to access the microphone. We use `mkcert` to create a certificate that your computer trusts.
+The project includes an automated setup script that configures the Python virtual environment, installs Node modules, and generates the necessary SSL certificates.
 
-Open a terminal and run:
-
+Simply double-click the `setup.bat` file in the root directory, or run it from the terminal:
 ```bash
-# 1. Install mkcert's root CA into your system's trust store (only needed once ever)
-mkcert -install
-
-# 2. Create the certs folder inside the frontend directory
-mkdir front\certs
-
-# 3. Move into that folder
-cd front\certs
-
-# 4. Generate the certificate — replace 192.168.1.20 with YOUR computer's local IP address
-#    To find your local IP on Windows: run  ipconfig  and look for "IPv4 Address"
-mkcert localhost 127.0.0.1 192.168.1.20
+.\setup.bat
 ```
+Follow the on-screen prompts. When asked for your local IP address, enter it if you want to access the app from other devices on your network. Otherwise, you can press Enter to skip.
 
-This creates two files inside `front/certs/`:
-- `192.168.1.20+3.pem` — the certificate
-- `192.168.1.20+3-key.pem` — the private key
-
-> **Note:** The exact filenames depend on the IP you used. The `vite.config.js` and backend `main.py` are already configured to look for `192.168.1.20+3.pem` and `192.168.1.20+3-key.pem`. If your IP is different, you will need to update those filenames in both `front/vite.config.js` (lines 7–8) and `back/app/main.py` (lines 62–63).
+> **Note:** Make sure you have installed all the prerequisites (Node.js, Python, mkcert) before running this script.
 
 ---
 
-### Step 3 — Backend Setup
+### Step 3 — Configure API Keys
 
-**Open Terminal Window #1** and run:
-
-```bash
-# Navigate to the backend folder
-cd back
-
-# Create a Python virtual environment (keeps packages isolated)
-python -m venv venv
-
-# Activate the virtual environment
-# On Windows:
-venv\Scripts\activate
-# On Mac/Linux:
-# source venv/bin/activate
-
-# Install all required Python packages
-pip install -r requirements.txt
-```
-
-#### Configure the API Key
-
-```bash
-# Copy the example environment file
-copy .env.example .env
-```
-
-Now open `.env` in a text editor and replace the placeholder with your real OpenAI key:
-
+After the setup script completes, it will create a `back\.env` file for you. Open this file in a text editor and add your OpenAI API key:
 ```
 OPENAI_API_KEY=sk-...your-actual-key-here...
 ```
-
-#### Start the Backend Server
-
-Still in **Terminal Window #1** (with the virtual environment active, inside the `back` folder):
-
-```bash
-uvicorn app.main:app --host 0.0.0.0 --port 3000 --ssl-keyfile ../front/certs/192.168.1.20+3-key.pem --ssl-certfile ../front/certs/192.168.1.20+3.pem
-```
-
-✅ You should see output like:
-```
-INFO:     Uvicorn running on https://0.0.0.0:3000 (Press CTRL+C to quit)
-```
-
-Leave this terminal open and running.
-
----
-
-### Step 4 — Frontend Setup
-
-**Open Terminal Window #2** and run:
-
-```bash
-# Navigate to the frontend folder
-cd front
-
-# Install JavaScript dependencies (only needed once, or after package.json changes)
-npm install
-
-# Start the development server
-npm run dev
-```
-
-✅ You should see output like:
-```
-  VITE v4.x.x  ready in ...ms
-
-  ➜  Local:   https://localhost:5173/
-  ➜  Network: https://192.168.1.20:5173/
-```
-
-Open your browser and visit **`https://localhost:5173`**. If you see a certificate warning, click "Advanced" → "Proceed to localhost" — this is expected the first time with a local certificate.
-
-Leave this terminal open and running.
 
 ---
 
@@ -185,15 +97,34 @@ Share that `https://abc123.ngrok-free.app` URL with participants — they can op
 
 ---
 
-## Running Order Summary
+## Running the System
 
-Every time you want to run the system, open three terminals and run these commands in order:
+Instead of opening multiple terminals manually, you can simply run the startup script:
 
-| Terminal | Directory | Command |
-|----------|-----------|---------|
-| **#1 — Backend** | `back/` | `venv\Scripts\activate` then `uvicorn app.main:app --host 0.0.0.0 --port 3000 --ssl-keyfile ../front/certs/192.168.1.20+3-key.pem --ssl-certfile ../front/certs/192.168.1.20+3.pem` |
-| **#2 — Frontend** | `front/` | `npm run dev` |
-| **#3 — ngrok** (optional) | anywhere | `ngrok http https://localhost:5173` |
+1. Double-click `start.bat` in the root directory, or run `.\start.bat` from a terminal.
+2. This will automatically launch both the Backend and Frontend servers in separate windows.
+3. Open your browser and visit **`https://localhost:5173`**.
+
+*(Optional)* If you need remote access, open a separate terminal and run `ngrok http https://localhost:5173`.
+
+---
+
+## Two Modes: Full vs Lite
+
+The system can operate in two distinct modes, which can be toggled directly from the UI:
+
+- **Full Mode**: The main research mode. The agent uses complex proactive facilitation logic to decide *when* to intervene and *what* to say, analyzing transcripts continuously. It uses a fully animated 3D avatar.
+- **Lite Mode**: A simplified, highly responsive conversational mode. It acts as a standard voice agent without the complex action-parsing logic, accompanied by a lightweight audio-reactive visualizer instead of the 3D avatar.
+
+---
+
+## User 2 Simulator
+
+To easily test the proactive facilitation logic without needing a second person, the system includes a built-in **User 2 Simulator**.
+
+The simulator acts as another participant in the room, allowing you to trigger pre-recorded audio responses (like greetings, agreements, or questions) to see how the virtual agent reacts to the conversation.
+
+Simply click **Add Simulator** in the web UI to bring User 2 into the session and start testing!
 
 ---
 
@@ -235,6 +166,8 @@ Virtual-Agent-for-Proactive-Facilitation/
 │   ├── vite.config.js       # Vite dev server config (SSL, proxy, ports)
 │   └── package.json         # JavaScript dependencies
 │
+├── setup.bat                # Automated setup script
+├── start.bat                # Automated startup script
 ├── overall_pipeline.jpg     # System diagram
 ├── ASIMOV_2026 (3).pdf      # Research paper
 └── README.md                # This file

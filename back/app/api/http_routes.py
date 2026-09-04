@@ -1,6 +1,6 @@
 import json
 import asyncio
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from app.models.schemas import ChatRequest
 from app.core.room_manager import room
@@ -20,6 +20,20 @@ async def get_participants():
         "participants": room.participant_list(),
         "voiceSessionActive": room.voice_session_active,
     }
+
+@router.get("/room/mode")
+async def get_mode():
+    return {"mode": room.mode}
+
+@router.post("/room/mode")
+async def set_mode(request: Request):
+    body = await request.json()
+    new_mode = body.get("mode", "full")
+    if new_mode not in ("full", "lite"):
+        return {"error": "Invalid mode. Must be 'full' or 'lite'."}
+    room.mode = new_mode
+    await room.broadcast_log(f"[room] Mode switched to: {new_mode.upper()}", "warning")
+    return {"mode": room.mode}
 
 @router.post("/chat")
 async def chat(request: ChatRequest):

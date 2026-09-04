@@ -7,72 +7,93 @@ import { Experience } from "./components/Experience";
 import { UI } from "./components/UI";
 import { useChat } from "./hooks/useChat";
 import { ImageSegmenter, FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
+import { MicTestModal } from "./components/MicTestModal";
+import { SimulatorPanel } from "./components/SimulatorPanel";
 
 // ── Join Modal ──────────────────────────────────────────────────────────────
 function JoinModal({ onJoin }) {
   const [name, setName] = useState("");
+  const [showMicTest, setShowMicTest] = useState(false);
 
   const handleSubmit = () => {
     if (name.trim()) onJoin(name.trim());
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div
-        className="relative w-full max-w-sm mx-4 rounded-2xl p-8 shadow-2xl"
-        style={{
-          background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
-          border: "1px solid rgba(148,163,184,0.15)",
-        }}
-      >
-        {/* Glow accent */}
+    <>
+      {showMicTest && <MicTestModal onClose={() => setShowMicTest(false)} />}
+
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
         <div
-          className="absolute -top-px left-1/2 -translate-x-1/2 h-px w-3/4"
+          className="relative w-full max-w-sm mx-4 rounded-2xl p-8 shadow-2xl"
           style={{
-            background:
-              "linear-gradient(90deg, transparent, #38bdf8, transparent)",
-          }}
-        />
-
-        <h2
-          className="mb-1 text-xl font-bold tracking-tight text-white"
-          style={{ fontFamily: "'DM Sans', sans-serif" }}
-        >
-          Join Meeting
-        </h2>
-        <p className="mb-6 text-sm text-slate-400">
-          Enter your display name to enter the room.
-        </p>
-
-        <input
-          autoFocus
-          type="text"
-          placeholder="Your name…"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-          className="w-full rounded-lg px-4 py-3 text-sm text-white placeholder-slate-500 outline-none focus:ring-2 focus:ring-sky-500/50 transition"
-          style={{
-            background: "rgba(255,255,255,0.06)",
+            background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
             border: "1px solid rgba(148,163,184,0.15)",
           }}
-        />
-
-        <button
-          onClick={handleSubmit}
-          disabled={!name.trim()}
-          className="mt-4 w-full rounded-lg py-3 text-sm font-semibold text-white transition-all"
-          style={{
-            background: name.trim()
-              ? "linear-gradient(135deg, #0ea5e9, #6366f1)"
-              : "rgba(148,163,184,0.15)",
-            cursor: name.trim() ? "pointer" : "not-allowed",
-          }}
         >
-          Join →
-        </button>
+          {/* Glow accent */}
+          <div
+            className="absolute -top-px left-1/2 -translate-x-1/2 h-px w-3/4"
+            style={{
+              background:
+                "linear-gradient(90deg, transparent, #38bdf8, transparent)",
+            }}
+          />
+
+          <h2
+            className="mb-1 text-xl font-bold tracking-tight text-white"
+            style={{ fontFamily: "'DM Sans', sans-serif" }}
+          >
+            Join Meeting
+          </h2>
+          <p className="mb-6 text-sm text-slate-400">
+            Enter your display name to enter the room.
+          </p>
+
+          <input
+            autoFocus
+            type="text"
+            placeholder="Your name…"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+            className="w-full rounded-lg px-4 py-3 text-sm text-white placeholder-slate-500 outline-none focus:ring-2 focus:ring-sky-500/50 transition"
+            style={{
+              background: "rgba(255,255,255,0.06)",
+              border: "1px solid rgba(148,163,184,0.15)",
+            }}
+          />
+
+          {/* Test mic — subtle link-style button */}
+          <button
+            onClick={() => setShowMicTest(true)}
+            className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-medium transition-all"
+            style={{
+              background: "rgba(56,189,248,0.07)",
+              border: "1px solid rgba(56,189,248,0.18)",
+              color: "#7dd3fc",
+              cursor: "pointer",
+            }}
+          >
+            <span>🎙</span> Test my mic before joining
+          </button>
+
+          <button
+            onClick={handleSubmit}
+            disabled={!name.trim()}
+            className="mt-3 w-full rounded-lg py-3 text-sm font-semibold text-white transition-all"
+            style={{
+              background: name.trim()
+                ? "linear-gradient(135deg, #0ea5e9, #6366f1)"
+                : "rgba(148,163,184,0.15)",
+              cursor: name.trim() ? "pointer" : "not-allowed",
+            }}
+          >
+            Join →
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -599,7 +620,222 @@ function ParticipantCell({
   );
 }
 
-// ── Empty Cell ──────────────────────────────────────────────────────────────
+// ── Facilitator Status Box (collapsible) ──────────────────────────────────
+const LOG_LEVEL_STYLES = {
+  info:    { color: "#94a3b8", prefix: "" },
+  success: { color: "#4ade80", prefix: "✓" },
+  warning: { color: "#fbbf24", prefix: "⚠" },
+  error:   { color: "#f87171", prefix: "✗" },
+};
+
+function FacilitatorStatusBox({ logs, voiceSessionActive }) {
+  const [open, setOpen] = useState(false); // closed by default
+  const bottomRef = useRef(null);
+
+  // Auto-scroll to bottom whenever new logs arrive (only when open)
+  useEffect(() => {
+    if (open) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [logs, open]);
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        bottom: "1rem",
+        left: "1rem",
+        right: "1rem",
+        zIndex: 20,
+        borderRadius: "14px",
+        overflow: "hidden",
+        background: "rgba(7, 11, 22, 0.80)",
+        border: "1px solid rgba(148,163,184,0.12)",
+        backdropFilter: "blur(14px)",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.45)",
+        display: "flex",
+        flexDirection: "column",
+        maxHeight: open ? "38%" : undefined,
+      }}
+    >
+      {/* ── Header / toggle bar ── */}
+      <button
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          padding: "7px 10px",
+          background: "rgba(15,23,42,0.7)",
+          border: "none",
+          borderBottom: open ? "1px solid rgba(148,163,184,0.1)" : "none",
+          cursor: "pointer",
+          width: "100%",
+          textAlign: "left",
+          flexShrink: 0,
+        }}
+      >
+        {/* Pulsing live dot */}
+        <span
+          style={{
+            display: "inline-block",
+            width: "7px",
+            height: "7px",
+            borderRadius: "50%",
+            background: voiceSessionActive ? "#4ade80" : "#475569",
+            boxShadow: voiceSessionActive ? "0 0 6px #4ade80" : "none",
+            animation: voiceSessionActive ? "pulse 1.6s ease-in-out infinite" : "none",
+            flexShrink: 0,
+          }}
+        />
+        <span
+          style={{
+            fontSize: "10px",
+            fontWeight: 700,
+            letterSpacing: "0.2em",
+            textTransform: "uppercase",
+            color: voiceSessionActive ? "#94a3b8" : "#475569",
+            fontFamily: "'DM Mono', 'Fira Mono', monospace",
+          }}
+        >
+          Facilitator Log
+        </span>
+
+        {/* LIVE label */}
+        {voiceSessionActive && (
+          <span
+            style={{
+              fontSize: "9px",
+              fontWeight: 700,
+              letterSpacing: "0.18em",
+              textTransform: "uppercase",
+              color: "#4ade80",
+              fontFamily: "'DM Mono', monospace",
+            }}
+          >
+            LIVE
+          </span>
+        )}
+
+        {/* Chevron toggle */}
+        <span
+          style={{
+            marginLeft: "auto",
+            color: "#475569",
+            fontSize: "12px",
+            lineHeight: 1,
+            transition: "transform 0.2s",
+            transform: open ? "rotate(180deg)" : "rotate(0deg)",
+            display: "inline-block",
+          }}
+        >
+          ▾
+        </span>
+      </button>
+
+      {/* ── Log entries (only rendered when open) ── */}
+      {open && (
+        <div
+          style={{
+            overflowY: "auto",
+            padding: "8px 12px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "3px",
+            fontFamily: "'DM Mono', 'Fira Mono', 'Courier New', monospace",
+            fontSize: "11px",
+            lineHeight: "1.5",
+            scrollbarWidth: "thin",
+            scrollbarColor: "rgba(148,163,184,0.2) transparent",
+            flex: 1,
+          }}
+        >
+          {logs.length === 0 ? (
+            <span style={{ color: "#334155", fontStyle: "italic" }}>
+              Waiting for session to start…
+            </span>
+          ) : (
+            logs.map((entry) => {
+              const { color, prefix } = LOG_LEVEL_STYLES[entry.level] ?? LOG_LEVEL_STYLES.info;
+              const time = new Date(entry.timestamp).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+              });
+              return (
+                <div key={entry.id} style={{ display: "flex", gap: "8px", alignItems: "flex-start" }}>
+                  <span style={{ color: "#334155", flexShrink: 0, fontSize: "10px", paddingTop: "1px" }}>
+                    {time}
+                  </span>
+                  {prefix && (
+                    <span style={{ color, flexShrink: 0, fontWeight: 700 }}>{prefix}</span>
+                  )}
+                  <span style={{ color, wordBreak: "break-word" }}>{entry.message}</span>
+                </div>
+              );
+            })
+          )}
+          <div ref={bottomRef} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Action Badge ─────────────────────────────────────────────────────────────
+const ACTION_STYLES = {
+  NO_ACTION:  { bg: "rgba(71,85,105,0.55)",  border: "rgba(100,116,139,0.35)", color: "#94a3b8",  icon: "—"  },
+  LITE:       { bg: "rgba(251,191,36,0.2)",  border: "rgba(251,191,36,0.45)",  color: "#fde68a",  icon: "⚡"  },
+  MEDIATE:    { bg: "rgba(99,102,241,0.25)",  border: "rgba(99,102,241,0.5)",   color: "#a5b4fc",  icon: "⚖"  },
+  ENCOURAGE:  { bg: "rgba(34,197,94,0.2)",   border: "rgba(34,197,94,0.45)",   color: "#86efac",  icon: "✦"  },
+  SUMMARIZE:  { bg: "rgba(14,165,233,0.2)",  border: "rgba(14,165,233,0.45)",  color: "#7dd3fc",  icon: "≡"  },
+  REDIRECT:   { bg: "rgba(251,191,36,0.2)",  border: "rgba(251,191,36,0.45)",  color: "#fde68a",  icon: "→"  },
+  CLARIFY:    { bg: "rgba(168,85,247,0.22)", border: "rgba(168,85,247,0.45)",  color: "#d8b4fe",  icon: "?"  },
+  INTERVENE:  { bg: "rgba(239,68,68,0.2)",   border: "rgba(239,68,68,0.4)",    color: "#fca5a5",  icon: "!"  },
+  UNKNOWN:    { bg: "rgba(71,85,105,0.3)",   border: "rgba(100,116,139,0.25)", color: "#64748b",  icon: "~"  },
+};
+
+function ActionBadge({ action }) {
+  // Always visible — show a placeholder when idle
+  const isIdle = !action;
+  const style = !isIdle
+    ? (ACTION_STYLES[action] ?? ACTION_STYLES.UNKNOWN)
+    : { bg: "rgba(30,41,59,0.5)", border: "rgba(71,85,105,0.25)", color: "#334155", icon: "" };
+
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "5px",
+        padding: "3px 10px 3px 8px",
+        borderRadius: "999px",
+        background: style.bg,
+        border: `1px solid ${style.border}`,
+        backdropFilter: "blur(8px)",
+        transition: "all 0.35s ease",
+        flexShrink: 0,
+      }}
+    >
+      {style.icon && (
+        <span style={{ fontSize: "11px", lineHeight: 1 }}>{style.icon}</span>
+      )}
+      <span
+        style={{
+          fontSize: "9px",
+          fontWeight: 700,
+          letterSpacing: "0.18em",
+          textTransform: "uppercase",
+          color: style.color,
+          fontFamily: "'DM Mono', 'Fira Mono', monospace",
+          transition: "color 0.35s ease",
+        }}
+      >
+        {isIdle ? "IDLE" : action}
+      </span>
+    </div>
+  );
+}
+
+
 function EmptyCell() {
   return (
     <div
@@ -630,6 +866,201 @@ function EmptyCell() {
       </span>
     </div>
   );
+}
+
+// ── Lite Avatar View ─────────────────────────────────────────────────────────
+function LiteAvatarView({ roomState }) {
+  // Color + behaviour per state
+  const stateConfig = {
+    idle:       { color: "#6366f1", glow: "rgba(99,102,241,0.35)",  label: "Idle",       bars: 4 },
+    listening:  { color: "#22c55e", glow: "rgba(34,197,94,0.45)",   label: "Listening",  bars: 7 },
+    processing: { color: "#f59e0b", glow: "rgba(245,158,11,0.45)",  label: "Thinking",   bars: 5 },
+    speaking:   { color: "#38bdf8", glow: "rgba(56,189,248,0.5)",   label: "Speaking",   bars: 9 },
+  };
+  const cfg = stateConfig[roomState] ?? stateConfig.idle;
+
+  const styleTag = `
+    @keyframes lite-pulse {
+      0%, 100% { transform: scale(1);   opacity: 0.7; }
+      50%       { transform: scale(1.18); opacity: 1;   }
+    }
+    @keyframes lite-ring {
+      0%   { transform: scale(0.85); opacity: 0.6; }
+      50%  { transform: scale(1.35); opacity: 0;   }
+      100% { transform: scale(0.85); opacity: 0;   }
+    }
+    @keyframes lite-bar {
+      0%, 100% { transform: scaleY(0.25); }
+      50%      { transform: scaleY(1);    }
+    }
+  `;
+
+  const numBars = cfg.bars;
+  const bars = Array.from({ length: numBars });
+
+  return (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: "28px",
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      <style>{styleTag}</style>
+
+      {/* Ambient background glow */}
+      <div
+        style={{
+          position: "absolute",
+          width: "300px",
+          height: "300px",
+          borderRadius: "50%",
+          background: `radial-gradient(circle, ${cfg.glow} 0%, transparent 70%)`,
+          transition: "background 0.6s ease",
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* Outer pulsing rings */}
+      {[1, 2].map((i) => (
+        <div
+          key={i}
+          style={{
+            position: "absolute",
+            width: `${90 + i * 55}px`,
+            height: `${90 + i * 55}px`,
+            borderRadius: "50%",
+            border: `1px solid ${cfg.color}`,
+            opacity: roomState === "idle" ? 0 : 0.4,
+            animation: roomState !== "idle" ? `lite-ring ${1.2 + i * 0.5}s ease-out ${i * 0.3}s infinite` : "none",
+            transition: "opacity 0.4s",
+            pointerEvents: "none",
+          }}
+        />
+      ))}
+
+      {/* Core orb */}
+      <div
+        style={{
+          position: "relative",
+          width: "80px",
+          height: "80px",
+          borderRadius: "50%",
+          background: `radial-gradient(circle at 35% 35%, ${cfg.color}cc, ${cfg.color}55)`,
+          boxShadow: `0 0 32px ${cfg.glow}, 0 0 8px ${cfg.color}88`,
+          animation: "lite-pulse 2s ease-in-out infinite",
+          transition: "background 0.6s ease, box-shadow 0.6s ease",
+          flexShrink: 0,
+        }}
+      />
+
+      {/* Sound bars — visible when listening or speaking */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "5px",
+          height: "40px",
+          opacity: (roomState === "listening" || roomState === "speaking") ? 1 : 0.2,
+          transition: "opacity 0.4s",
+        }}
+      >
+        {bars.map((_, i) => {
+          const delay = (i / numBars) * 0.9;
+          const dur = 0.5 + (i % 3) * 0.2;
+          return (
+            <div
+              key={i}
+              style={{
+                width: "4px",
+                height: "100%",
+                borderRadius: "2px",
+                background: cfg.color,
+                transformOrigin: "center",
+                animation: (roomState === "listening" || roomState === "speaking")
+                  ? `lite-bar ${dur}s ease-in-out ${delay}s infinite`
+                  : "none",
+                transform: "scaleY(0.25)",
+                transition: "background 0.5s",
+              }}
+            />
+          );
+        })}
+      </div>
+
+      {/* State label */}
+      <div
+        style={{
+          fontSize: "10px",
+          fontWeight: 700,
+          letterSpacing: "0.25em",
+          textTransform: "uppercase",
+          color: cfg.color,
+          fontFamily: "'DM Mono', 'Fira Mono', monospace",
+          opacity: 0.8,
+          transition: "color 0.5s",
+        }}
+      >
+        {cfg.label}
+      </div>
+    </div>
+  );
+}
+
+// ── Lite Audio Player ────────────────────────────────────────────────────────
+// Handles audio playback and onMessagePlayed() when the 3D Avatar is absent.
+function LiteAudioPlayer() {
+  const { message, onMessagePlayed } = useChat();
+  const audioCtxRef = useRef(null);
+  const sourceRef = useRef(null);
+
+  useEffect(() => {
+    if (!message) return;
+
+    const audio = message.audioEl
+      ? message.audioEl
+      : (() => {
+          const mimeType = message.audio?.startsWith("UklGR") ? "audio/wav" : "audio/mpeg";
+          return new Audio(`data:${mimeType};base64,${message.audio}`);
+        })();
+
+    // Set up AudioContext (needed to unlock autoplay in browsers)
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    const ctx = audioCtxRef.current;
+    if (ctx.state === "suspended") ctx.resume();
+
+    try {
+      if (sourceRef.current) sourceRef.current.disconnect();
+      const source = ctx.createMediaElementSource(audio);
+      source.connect(ctx.destination);
+      sourceRef.current = source;
+    } catch (e) {
+      // Already connected — ignore
+    }
+
+    audio.play().catch((err) => {
+      console.error("[LiteAudioPlayer] play error:", err);
+      // Still need to call onMessagePlayed so the queue doesn't jam
+      onMessagePlayed();
+    });
+
+    audio.onended = () => {
+      onMessagePlayed();
+      if (sourceRef.current) {
+        try { sourceRef.current.disconnect(); } catch (_) {}
+      }
+    };
+  }, [message]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return null; // renders nothing
 }
 
 // ── Icon helpers ────────────────────────────────────────────────────────────
@@ -743,9 +1174,43 @@ function App() {
     webcamStream,
     toggleWebcam,
     remoteStreams,
+    facilitatorLogs,
+    voiceSessionActive,
+    lastFacilitatorAction,
+    roomState,
   } = useChat();
 
+  // ── Facilitator Mode ─────────────────────────────────────────────────────
+  const [facilitatorMode, setFacilitatorMode] = useState("full");
+  const [modeLoading, setModeLoading] = useState(false);
+
+  useEffect(() => {
+    fetch("/room/mode")
+      .then((r) => r.json())
+      .then((data) => setFacilitatorMode(data.mode))
+      .catch(() => {});
+  }, []);
+
+  const toggleFacilitatorMode = useCallback(async () => {
+    const next = facilitatorMode === "full" ? "lite" : "full";
+    setModeLoading(true);
+    try {
+      const res = await fetch("/room/mode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: next }),
+      });
+      const data = await res.json();
+      setFacilitatorMode(data.mode ?? next);
+    } catch (e) {
+      console.error("Failed to switch mode", e);
+    } finally {
+      setModeLoading(false);
+    }
+  }, [facilitatorMode]);
+
   const [showJoinModal, setShowJoinModal] = useState(false);
+  const [showSimulator, setShowSimulator] = useState(false);
   const isJoined = !!sessionId;
 
   const handleJoin = useCallback(
@@ -767,8 +1232,12 @@ function App() {
       <Loader />
       <Leva hidden />
       <UI />
+      {facilitatorMode === "lite" && <LiteAudioPlayer />}
 
       {showJoinModal && <JoinModal onJoin={handleJoin} />}
+      {showSimulator && isJoined && (
+        <SimulatorPanel onClose={() => setShowSimulator(false)} />
+      )}
 
       <main
         className="h-screen overflow-hidden flex flex-col p-4 md:p-6 lg:p-10"
@@ -812,16 +1281,97 @@ function App() {
           </div>
 
           {isJoined ? (
-            <button
-              onClick={handleLeave}
-              className="rounded-full px-5 py-2.5 text-sm font-semibold text-red-300 transition-all hover:bg-red-500/20"
-              style={{
-                background: "rgba(239,68,68,0.1)",
-                border: "1px solid rgba(239,68,68,0.25)",
-              }}
-            >
-              Leave Meeting
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Mode toggle */}
+              <button
+                id="mode-toggle-btn"
+                onClick={toggleFacilitatorMode}
+                disabled={modeLoading}
+                title={`Switch to ${facilitatorMode === "full" ? "Lite" : "Full"} Mode`}
+                className="flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-semibold transition-all"
+                style={{
+                  background: facilitatorMode === "lite"
+                    ? "rgba(251,191,36,0.15)"
+                    : "rgba(148,163,184,0.08)",
+                  border: facilitatorMode === "lite"
+                    ? "1px solid rgba(251,191,36,0.4)"
+                    : "1px solid rgba(148,163,184,0.18)",
+                  color: facilitatorMode === "lite" ? "#fde68a" : "#94a3b8",
+                  opacity: modeLoading ? 0.6 : 1,
+                  cursor: modeLoading ? "not-allowed" : "pointer",
+                }}
+              >
+                {/* Toggle track */}
+                <span
+                  style={{
+                    display: "inline-flex",
+                    width: "28px",
+                    height: "16px",
+                    borderRadius: "999px",
+                    background: facilitatorMode === "lite" ? "rgba(251,191,36,0.5)" : "rgba(100,116,139,0.35)",
+                    alignItems: "center",
+                    padding: "2px",
+                    transition: "background 0.25s",
+                    flexShrink: 0,
+                  }}
+                >
+                  <span
+                    style={{
+                      width: "12px",
+                      height: "12px",
+                      borderRadius: "50%",
+                      background: facilitatorMode === "lite" ? "#fbbf24" : "#64748b",
+                      transform: facilitatorMode === "lite" ? "translateX(12px)" : "translateX(0px)",
+                      transition: "transform 0.25s, background 0.25s",
+                      flexShrink: 0,
+                    }}
+                  />
+                </span>
+                {facilitatorMode === "lite" ? "Lite" : "Full"}
+              </button>
+
+              {/* Simulator toggle button */}
+              <button
+                id="sim-toggle-btn"
+                onClick={() => setShowSimulator((v) => !v)}
+                title={showSimulator ? "Close simulator" : "Open User 2 Simulator"}
+                className="flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-semibold transition-all"
+                style={{
+                  background: showSimulator
+                    ? "rgba(99,102,241,0.18)"
+                    : "rgba(148,163,184,0.08)",
+                  border: showSimulator
+                    ? "1px solid rgba(99,102,241,0.4)"
+                    : "1px solid rgba(148,163,184,0.18)",
+                  color: showSimulator ? "#a5b4fc" : "#94a3b8",
+                }}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="14"
+                  height="14"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                </svg>
+                {showSimulator ? "Hide Simulator" : "Add Simulator"}
+              </button>
+
+              {/* Leave */}
+              <button
+                onClick={handleLeave}
+                className="rounded-full px-5 py-2.5 text-sm font-semibold text-red-300 transition-all hover:bg-red-500/20"
+                style={{
+                  background: "rgba(239,68,68,0.1)",
+                  border: "1px solid rgba(239,68,68,0.25)",
+                }}
+              >
+                Leave Meeting
+              </button>
+            </div>
           ) : (
             <button
               onClick={() => setShowJoinModal(true)}
@@ -871,14 +1421,20 @@ function App() {
               backdropFilter: "blur(16px)",
             }}
           >
+            {/* AI Facilitator label + action badge — inline pill row */}
             <div
-              className="absolute left-4 top-4 z-10 rounded-full px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-200 shadow-lg"
-              style={{
-                background: "rgba(15,23,42,0.9)",
-                border: "1px solid rgba(148,163,184,0.15)",
-              }}
+              className="absolute left-4 top-4 z-10 flex items-center gap-2"
             >
-              AI Facilitator
+              <div
+                className="rounded-full px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-200 shadow-lg"
+                style={{
+                  background: "rgba(15,23,42,0.9)",
+                  border: "1px solid rgba(148,163,184,0.15)",
+                }}
+              >
+                AI Facilitator
+              </div>
+              <ActionBadge action={lastFacilitatorAction} />
             </div>
 
             <div
@@ -890,14 +1446,25 @@ function App() {
             />
 
             <div className="h-full">
-              <Canvas
-                shadows
-                camera={{ position: [0, 0, 1], fov: 30 }}
-                style={{ width: "100%", height: "100%" }}
-              >
-                <Experience />
-              </Canvas>
+              {facilitatorMode === "lite" ? (
+                <LiteAvatarView roomState={roomState} />
+              ) : (
+                <Canvas
+                  shadows
+                  camera={{ position: [0, 0, 1], fov: 30 }}
+                  style={{ width: "100%", height: "100%" }}
+                >
+                  <Experience />
+                </Canvas>
+              )}
             </div>
+
+            {/* Facilitator status log box */}
+            <FacilitatorStatusBox
+              logs={facilitatorLogs}
+              voiceSessionActive={voiceSessionActive}
+            />
+
           </div>
 
           {/* Right user */}

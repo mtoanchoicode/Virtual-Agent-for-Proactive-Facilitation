@@ -59,6 +59,6 @@ if __name__ == "__main__":
         "app.main:app",
         host="0.0.0.0",
         port=3000,
-        ssl_keyfile=os.path.join(BASE_DIR, "../front/certs/192.168.1.20+3-key.pem"),
-        ssl_certfile=os.path.join(BASE_DIR, "../front/certs/192.168.1.20+3.pem"),
+        ssl_keyfile=os.path.abspath(os.path.join(BASE_DIR, "../../front/certs/192.168.1.20+3-key.pem")),
+        ssl_certfile=os.path.abspath(os.path.join(BASE_DIR, "../../front/certs/192.168.1.20+3.pem")),
     )
