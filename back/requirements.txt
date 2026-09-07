@@ -4,5 +4,4 @@ python-dotenv
 openai
 aiofiles
 pydantic
-faster-whisper
 edge-tts

@@ -21,11 +21,21 @@ class ConversationManager:
             self.transcript_log = self.transcript_log[-MAX_TRANSCRIPT_LOG_LEN:]
 
     def _append_to_debug_log(self, entry: dict):
+        import os
+        if os.environ.get("ENABLE_FILE_LOGGING", "true").lower() != "true":
+            return
         try:
-            with open("history_debug.txt", "a", encoding="utf-8") as f:
+            from app.core.config import BASE_DIR
+            log_path = os.path.join(BASE_DIR, "history_debug.txt")
+            with open(log_path, "a", encoding="utf-8") as f:
                 f.write(f"[{entry['role'].upper()}] {entry['content']}\n")
         except Exception as e:
             print(f"Error writing to history debug log: {e}")
+
+    def clear(self):
+        """Clear the history and transcripts when the session ends."""
+        self.history = []
+        self.transcript_log = []
 
     def add_entry(self, speaker: str, text: str):
         self.transcript_log.append({"speaker": speaker, "text": text})

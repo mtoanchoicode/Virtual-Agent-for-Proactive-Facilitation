@@ -62,6 +62,8 @@ _TIMING_LOG_PATH = os.path.join(
 
 def _write_timing_log(timing: dict) -> None:
     """Append a structured per-step timing breakdown for one facilitator turn to timing_log.txt."""
+    if os.environ.get("ENABLE_FILE_LOGGING", "true").lower() != "true":
+        return
     t0 = timing["t_silence"]
 
     def rel(key: str) -> str:

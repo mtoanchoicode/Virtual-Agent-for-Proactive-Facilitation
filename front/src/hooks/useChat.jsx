@@ -11,8 +11,10 @@ import {
 const isSecure = window.location.protocol === "https:";
 const wsProtocol = isSecure ? "wss" : "ws";
 
-const API_URL = "";
-const WS_URL = `${wsProtocol}://${window.location.host}/ws/voice`;
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "";
+const API_URL = BACKEND_URL;
+const wsHost = BACKEND_URL ? BACKEND_URL.replace(/^http/, "ws") : `${wsProtocol}://${window.location.host}`;
+const WS_URL = `${wsHost}/ws/voice`;
 
 const ChatContext = createContext();
 
@@ -405,6 +407,11 @@ export const ChatProvider = ({ children }) => {
           setVoiceSessionActive(false);
           setLocalVoiceStreaming(false);
           setRoomState("idle");
+          setTurnTranscripts([]);
+          setModelTranscripts([]);
+          setMessages([]);
+          setFacilitatorLogs([]);
+          setLastFacilitatorAction(null);
           // Close all peer connections
           Object.values(peerConnectionsRef.current).forEach((pc) => pc.close());
           peerConnectionsRef.current = {};
@@ -756,6 +763,11 @@ export const ChatProvider = ({ children }) => {
     setVoiceSessionActive(false);
     setLocalVoiceStreaming(false);
     setRoomState("idle");
+    setTurnTranscripts([]);
+    setModelTranscripts([]);
+    setMessages([]);
+    setFacilitatorLogs([]);
+    setLastFacilitatorAction(null);
     wsRef.current?.close();
   }, [stopAudioStreaming]);
 

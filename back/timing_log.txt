@@ -1048,3 +1048,150 @@
   TOTAL  silence → first audio       2.592s
 =================================================================
 
+
+=================================================================
+  Turn #005  ·  2026-09-07T15:00:30Z
+  Action : DEEPEN
+  Text   : "What specific problems are you thinking about solving with A"
+=================================================================
+  Checkpoint                   From silence     Step delta
+  -------------------------------------------------------
+  Silence detected                   0.000s
+  Processing start                   0.002s      (+0.002s)
+  STT tasks done                     1.498s      (+1.496s)
+  LLM first token                    3.144s      (+1.646s)
+  LLM action parsed                  3.221s      (+0.077s)
+  LLM stream done                    3.264s      (+0.043s)
+  TTS start  (chunk 0)               3.268s      (+0.005s)
+  TTS first chunk sent               6.928s      (+3.660s)
+  TTS stream done                    7.235s      (+0.307s)
+  -------------------------------------------------------
+  TOTAL  silence → first audio       6.928s
+=================================================================
+
+
+=================================================================
+  Turn #008  ·  2026-09-07T15:01:14Z
+  Action : ENCOURAGE
+  Text   : "Simulator, what are your thoughts on using AI in music conte"
+=================================================================
+  Checkpoint                   From silence     Step delta
+  -------------------------------------------------------
+  Silence detected                   0.000s
+  Processing start                   0.000s      (+0.000s)
+  STT tasks done                     1.291s      (+1.291s)
+  LLM first token                    1.926s      (+0.635s)
+  LLM action parsed                  1.960s      (+0.034s)
+  LLM stream done                    2.089s      (+0.128s)
+  TTS start  (chunk 0)               2.092s      (+0.004s)
+  TTS first chunk sent               3.094s      (+1.002s)
+  TTS stream done                    3.344s      (+0.250s)
+  -------------------------------------------------------
+  TOTAL  silence → first audio       3.094s
+=================================================================
+
+
+=================================================================
+  Turn #010  ·  2026-09-07T15:01:31Z
+  Action : DEEPEN
+  Text   : "Jimmy, can you elaborate on what specific features you envis"
+=================================================================
+  Checkpoint                   From silence     Step delta
+  -------------------------------------------------------
+  Silence detected                   0.000s
+  Processing start                   0.000s      (+0.000s)
+  STT tasks done                     0.893s      (+0.893s)
+  LLM first token                    1.549s      (+0.656s)
+  LLM action parsed                  1.742s      (+0.193s)
+  LLM stream done                    1.820s      (+0.078s)
+  TTS start  (chunk 0)               1.820s      (+0.000s)
+  TTS first chunk sent               2.796s      (+0.976s)
+  TTS stream done                    3.096s      (+0.300s)
+  -------------------------------------------------------
+  TOTAL  silence → first audio       2.796s
+=================================================================
+
+
+=================================================================
+  Turn #011  ·  2026-09-07T15:01:44Z
+  Action : SUMMARIZE
+  Text   : "We discussed the need to update the AI system and explore it"
+=================================================================
+  Checkpoint                   From silence     Step delta
+  -------------------------------------------------------
+  Silence detected                   0.000s
+  Processing start                   0.001s      (+0.001s)
+  STT tasks done                     1.107s      (+1.106s)
+  LLM first token                    1.868s      (+0.761s)
+  LLM action parsed                  1.885s      (+0.017s)
+  LLM stream done                    2.131s      (+0.246s)
+  TTS start  (chunk 0)               2.135s      (+0.005s)
+  TTS first chunk sent               3.035s      (+0.900s)
+  TTS stream done                    3.406s      (+0.371s)
+  -------------------------------------------------------
+  TOTAL  silence → first audio       3.035s
+=================================================================
+
+
+=================================================================
+  Turn #012  ·  2026-09-07T15:02:05Z
+  Action : SUMMARIZE
+  Text   : "We covered updating our AI system and delving into its appli"
+=================================================================
+  Checkpoint                   From silence     Step delta
+  -------------------------------------------------------
+  Silence detected                   0.000s
+  Processing start                   0.000s      (+0.000s)
+  STT tasks done                     0.440s      (+0.440s)
+  LLM first token                    1.100s      (+0.660s)
+  LLM action parsed                  1.333s      (+0.233s)
+  LLM stream done                    1.610s      (+0.277s)
+  TTS start  (chunk 0)               1.613s      (+0.003s)
+  TTS first chunk sent               2.621s      (+1.008s)
+  TTS stream done                    3.030s      (+0.410s)
+  -------------------------------------------------------
+  TOTAL  silence → first audio       2.621s
+=================================================================
+
+
+=================================================================
+  Turn #013  ·  2026-09-07T15:02:34Z
+  Action : SUMMARIZE
+  Text   : "The discussion has been light-hearted, centered around humor"
+=================================================================
+  Checkpoint                   From silence     Step delta
+  -------------------------------------------------------
+  Silence detected                   0.000s
+  Processing start                   0.000s      (+0.000s)
+  STT tasks done                     0.254s      (+0.254s)
+  LLM first token                    2.787s      (+2.532s)
+  LLM action parsed                  2.916s      (+0.130s)
+  LLM stream done                    3.161s      (+0.244s)
+  TTS start  (chunk 0)               3.161s      (+0.000s)
+  TTS first chunk sent               4.340s      (+1.180s)
+  TTS stream done                    4.809s      (+0.468s)
+  -------------------------------------------------------
+  TOTAL  silence → first audio       4.340s
+=================================================================
+
+
+=================================================================
+  Turn #003  ·  2026-09-07T15:16:36Z
+  Action : DEEPEN
+  Text   : "What do you mean by being all of us in the meeting?"
+=================================================================
+  Checkpoint                   From silence     Step delta
+  -------------------------------------------------------
+  Silence detected                   0.000s
+  Processing start                   0.000s      (+0.000s)
+  STT tasks done                     0.892s      (+0.892s)
+  LLM first token                    1.545s      (+0.653s)
+  LLM action parsed                  1.636s      (+0.091s)
+  LLM stream done                    1.732s      (+0.096s)
+  TTS start  (chunk 0)               1.734s      (+0.002s)
+  TTS first chunk sent               3.895s      (+2.161s)
+  TTS stream done                    4.137s      (+0.241s)
+  -------------------------------------------------------
+  TOTAL  silence → first audio       3.895s
+=================================================================
+

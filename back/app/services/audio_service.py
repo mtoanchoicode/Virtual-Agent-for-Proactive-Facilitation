@@ -2,7 +2,7 @@ import os
 import wave as wave_mod
 import numpy as np
 
-from app.core.config import client, INT16_MAX, NOISE_FLOOR_RMS
+from app.core.config import client, INT16_MAX, NOISE_FLOOR_RMS, SILERO_VAD_THRESHOLD
 
 whisper_model = None
 
@@ -66,8 +66,7 @@ def is_speech_present(pcm_bytes: bytes) -> bool:
             audio_tensor = torch.from_numpy(audio)
             
             # get_speech_timestamps returns a list of dicts like {'start': 123, 'end': 456}
-            # threshold=0.5 is standard, adjust higher to be stricter against noise
-            speech_timestamps = get_speech_timestamps(audio_tensor, vad_model, sampling_rate=16000, threshold=0.2)
+            speech_timestamps = get_speech_timestamps(audio_tensor, vad_model, sampling_rate=16000, threshold=SILERO_VAD_THRESHOLD)
             
             return len(speech_timestamps) > 0
         except Exception:

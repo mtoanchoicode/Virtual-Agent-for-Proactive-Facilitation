@@ -102,6 +102,10 @@ async def voice_ws(websocket: WebSocket):
                     if client_voice_active and len(room.active_participants) == 0:
                         await room.deactivate_voice_session()
 
+                    if len(room.participant_list()) == 0:
+                        from app.services.llm_service import shared_conv
+                        shared_conv.clear()
+
                     participant = None
                     client_voice_active = False
 
@@ -207,4 +211,7 @@ async def voice_ws(websocket: WebSocket):
             })
             if client_voice_active and len(room.active_participants) == 0:
                 await room.deactivate_voice_session()
+            if len(room.participant_list()) == 0:
+                from app.services.llm_service import shared_conv
+                shared_conv.clear()
             print(f"[room] {participant.name} disconnected")

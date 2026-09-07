@@ -14,9 +14,12 @@ if sys.platform == "win32":
 
 app = FastAPI(title="IAcine Avatar 3D API")
 
+cors_origins_env = os.getenv("CORS_ORIGINS", "*")
+cors_origins = [origin.strip() for origin in cors_origins_env.split(",")] if cors_origins_env != "*" else ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Temporary for testing
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -55,10 +58,25 @@ else:
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        "app.main:app",
-        host="0.0.0.0",
-        port=3000,
-        ssl_keyfile=os.path.abspath(os.path.join(BASE_DIR, "../../front/certs/192.168.1.20+3-key.pem")),
-        ssl_certfile=os.path.abspath(os.path.join(BASE_DIR, "../../front/certs/192.168.1.20+3.pem")),
-    )
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "3000"))
+    ssl_keyfile = os.getenv("SSL_KEYFILE")
+    ssl_certfile = os.getenv("SSL_CERTFILE")
+
+    run_kwargs = {
+        "host": host,
+        "port": port,
+    }
+
+    if ssl_keyfile and ssl_certfile:
+        run_kwargs["ssl_keyfile"] = ssl_keyfile
+        run_kwargs["ssl_certfile"] = ssl_certfile
+    else:
+        # Fallback to local certs for development if they exist
+        local_key = os.path.abspath(os.path.join(BASE_DIR, "../../front/certs/192.168.1.20+3-key.pem"))
+        local_cert = os.path.abspath(os.path.join(BASE_DIR, "../../front/certs/192.168.1.20+3.pem"))
+        if os.path.exists(local_key) and os.path.exists(local_cert):
+            run_kwargs["ssl_keyfile"] = local_key
+            run_kwargs["ssl_certfile"] = local_cert
+
+    uvicorn.run("app.main:app", **run_kwargs)
