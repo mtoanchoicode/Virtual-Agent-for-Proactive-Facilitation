@@ -24,22 +24,28 @@ const WARMUP_MS = 1500;
 
 const ICE_SERVERS = {
   iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
     {
-      urls: "turn:openrelay.metered.ca:80",
-      username: "openrelayproject",
-      credential: "openrelayproject",
+      urls: "stun:stun.relay.metered.ca:80",
     },
     {
-      urls: "turn:openrelay.metered.ca:443",
-      username: "openrelayproject",
-      credential: "openrelayproject",
+      urls: "turn:global.relay.metered.ca:80",
+      username: "4a675b16a4b55511680ac09e",
+      credential: "wcY9X5cDbKj8d4g2",
     },
     {
-      urls: "turn:openrelay.metered.ca:443?transport=tcp",
-      username: "openrelayproject",
-      credential: "openrelayproject",
+      urls: "turn:global.relay.metered.ca:80?transport=tcp",
+      username: "4a675b16a4b55511680ac09e",
+      credential: "wcY9X5cDbKj8d4g2",
+    },
+    {
+      urls: "turn:global.relay.metered.ca:443",
+      username: "4a675b16a4b55511680ac09e",
+      credential: "wcY9X5cDbKj8d4g2",
+    },
+    {
+      urls: "turns:global.relay.metered.ca:443?transport=tcp",
+      username: "4a675b16a4b55511680ac09e",
+      credential: "wcY9X5cDbKj8d4g2",
     },
   ],
 };
@@ -194,7 +200,7 @@ export const ChatProvider = ({ children }) => {
         .getTracks()
         .forEach((track) => pc.addTrack(track, localStream));
     }
-    
+
     // Add local audio tracks so the remote peer can hear us
     const audioStream = peerAudioStreamRef.current;
     if (audioStream) {
@@ -564,8 +570,8 @@ export const ChatProvider = ({ children }) => {
         case "turn_interrupted":
           // Stop any active streams
           Object.values(activeStreamsRef.current).forEach(s => {
-             s.audioEl?.pause();
-             if (s.objectUrl) URL.revokeObjectURL(s.objectUrl);
+            s.audioEl?.pause();
+            if (s.objectUrl) URL.revokeObjectURL(s.objectUrl);
           });
           activeStreamsRef.current = {};
           setMessages([]);
