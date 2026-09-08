@@ -1213,6 +1213,26 @@ function App() {
   const [showSimulator, setShowSimulator] = useState(false);
   const isJoined = !!sessionId;
 
+  // ── Ping Backend ─────────────────────────────────────────────────────────
+  const [pingStatus, setPingStatus] = useState("idle"); // "idle" | "pinging" | "success" | "error"
+
+  const handlePing = async () => {
+    setPingStatus("pinging");
+    try {
+      const res = await fetch("/api");
+      if (res.ok) {
+        setPingStatus("success");
+        setTimeout(() => setPingStatus("idle"), 3000);
+      } else {
+        setPingStatus("error");
+        setTimeout(() => setPingStatus("idle"), 3000);
+      }
+    } catch (e) {
+      setPingStatus("error");
+      setTimeout(() => setPingStatus("idle"), 3000);
+    }
+  };
+
   const handleJoin = useCallback(
     (name) => {
       joinRoom(name);
@@ -1278,10 +1298,43 @@ function App() {
                 Joined as {myName}
               </div>
             )}
+            
+            {/* Ping Button */}
+            <button
+              onClick={handlePing}
+              disabled={pingStatus === "pinging"}
+              className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold transition-all shadow-lg ${
+                pingStatus === "pinging" ? "animate-pulse" : "hover:scale-105 active:scale-95"
+              }`}
+              style={{
+                background: pingStatus === "pinging" 
+                  ? "linear-gradient(135deg, #f59e0b, #d97706)" 
+                  : pingStatus === "success" 
+                    ? "linear-gradient(135deg, #22c55e, #16a34a)" 
+                    : pingStatus === "error" 
+                      ? "linear-gradient(135deg, #ef4444, #dc2626)" 
+                      : "linear-gradient(135deg, #0ea5e9, #4f46e5)",
+                color: "#ffffff",
+                boxShadow: pingStatus === "pinging"
+                  ? "0 0 20px rgba(245, 158, 11, 0.5)"
+                  : pingStatus === "success"
+                    ? "0 0 20px rgba(34, 197, 94, 0.5)"
+                    : pingStatus === "error"
+                      ? "0 0 20px rgba(239, 68, 68, 0.5)"
+                      : "0 0 20px rgba(14, 165, 233, 0.5)",
+                textShadow: "0 1px 3px rgba(0,0,0,0.6)",
+                letterSpacing: "0.05em",
+                cursor: pingStatus === "pinging" ? "wait" : "pointer",
+                border: "1px solid rgba(255,255,255,0.2)",
+              }}
+              title="Ping backend to wake it up from Render free tier sleep"
+            >
+              {pingStatus === "pinging" ? "Waking up..." : pingStatus === "success" ? "Backend Awake ✓" : pingStatus === "error" ? "Ping Failed ✗" : "Wake Backend"}
+            </button>
           </div>
 
           {isJoined ? (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {/* Mode toggle */}
               <button
                 id="mode-toggle-btn"
@@ -1386,9 +1439,9 @@ function App() {
         </header>
 
         {/* Meeting grid */}
-        <section className="grid flex-1 gap-4 sm:grid-cols-3 min-h-0">
+        <section className="grid flex-1 gap-4 grid-cols-2 grid-rows-2 md:grid-cols-3 md:grid-rows-1 min-h-0">
           {/* Left user */}
-          <div className="h-full">
+          <div className="h-full order-1">
             {participantSlots[0] ? (
               <ParticipantCell
                 participant={participantSlots[0]}
@@ -1414,7 +1467,7 @@ function App() {
 
           {/* Facilitator */}
           <div
-            className="relative h-full overflow-hidden rounded-3xl shadow-2xl shadow-black/30"
+            className="relative h-full overflow-hidden rounded-3xl shadow-2xl shadow-black/30 col-span-2 order-3 md:col-span-1 md:order-2"
             style={{
               border: "1px solid rgba(148,163,184,0.2)",
               background: "rgba(15,23,42,0.6)",
@@ -1468,7 +1521,7 @@ function App() {
           </div>
 
           {/* Right user */}
-          <div className="h-full">
+          <div className="h-full order-2 md:order-3">
             {participantSlots[1] ? (
               <ParticipantCell
                 participant={participantSlots[1]}

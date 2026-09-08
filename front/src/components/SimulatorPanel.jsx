@@ -363,6 +363,7 @@ export function SimulatorPanel({ onClose }) {
           right:          "1.5rem",
           zIndex:         1000,
           width:          "300px",
+          maxWidth:       "calc(100vw - 3rem)",
           borderRadius:   "18px",
           background:     "rgba(7, 11, 22, 0.93)",
           border:         "1px solid rgba(148,163,184,0.14)",
