@@ -10,6 +10,8 @@ import { ImageSegmenter, FaceLandmarker, FilesetResolver } from "@mediapipe/task
 import { MicTestModal } from "./components/MicTestModal";
 import { SimulatorPanel } from "./components/SimulatorPanel";
 
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "";
+
 // ── Join Modal ──────────────────────────────────────────────────────────────
 function JoinModal({ onJoin }) {
   const [name, setName] = useState("");
@@ -1185,7 +1187,7 @@ function App() {
   const [modeLoading, setModeLoading] = useState(false);
 
   useEffect(() => {
-    fetch("/room/mode")
+    fetch(`${BACKEND_URL}/room/mode`)
       .then((r) => r.json())
       .then((data) => setFacilitatorMode(data.mode))
       .catch(() => {});
@@ -1195,7 +1197,7 @@ function App() {
     const next = facilitatorMode === "full" ? "lite" : "full";
     setModeLoading(true);
     try {
-      const res = await fetch("/room/mode", {
+      const res = await fetch(`${BACKEND_URL}/room/mode`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: next }),
@@ -1219,7 +1221,7 @@ function App() {
   const handlePing = async () => {
     setPingStatus("pinging");
     try {
-      const res = await fetch("/api");
+      const res = await fetch(`${BACKEND_URL}/api`);
       if (res.ok) {
         setPingStatus("success");
         setTimeout(() => setPingStatus("idle"), 3000);
