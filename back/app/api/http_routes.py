@@ -32,6 +32,7 @@ async def set_mode(request: Request):
     if new_mode not in ("full", "lite"):
         return {"error": "Invalid mode. Must be 'full' or 'lite'."}
     room.mode = new_mode
+    await room.broadcast({"type": "mode_changed", "mode": new_mode})
     await room.broadcast_log(f"[room] Mode switched to: {new_mode.upper()}", "warning")
     return {"mode": room.mode}
 

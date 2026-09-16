@@ -1180,36 +1180,10 @@ function App() {
     voiceSessionActive,
     lastFacilitatorAction,
     roomState,
+    facilitatorMode,
+    toggleFacilitatorMode,
+    modeLoading,
   } = useChat();
-
-  // ── Facilitator Mode ─────────────────────────────────────────────────────
-  const [facilitatorMode, setFacilitatorMode] = useState("full");
-  const [modeLoading, setModeLoading] = useState(false);
-
-  useEffect(() => {
-    fetch(`${BACKEND_URL}/room/mode`)
-      .then((r) => r.json())
-      .then((data) => setFacilitatorMode(data.mode))
-      .catch(() => {});
-  }, []);
-
-  const toggleFacilitatorMode = useCallback(async () => {
-    const next = facilitatorMode === "full" ? "lite" : "full";
-    setModeLoading(true);
-    try {
-      const res = await fetch(`${BACKEND_URL}/room/mode`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: next }),
-      });
-      const data = await res.json();
-      setFacilitatorMode(data.mode ?? next);
-    } catch (e) {
-      console.error("Failed to switch mode", e);
-    } finally {
-      setModeLoading(false);
-    }
-  }, [facilitatorMode]);
 
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showSimulator, setShowSimulator] = useState(false);

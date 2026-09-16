@@ -67,6 +67,35 @@ export const ChatProvider = ({ children }) => {
   const [participantEntropies, setParticipantEntropies] = useState({});
   const [facilitatorLogs, setFacilitatorLogs] = useState([]);
   const [lastFacilitatorAction, setLastFacilitatorAction] = useState(null);
+  
+  // ── Facilitator Mode ─────────────────────────────────────────────────────
+  const [facilitatorMode, setFacilitatorMode] = useState("full");
+  const [modeLoading, setModeLoading] = useState(false);
+
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/room/mode`)
+      .then((r) => r.json())
+      .then((data) => setFacilitatorMode(data.mode))
+      .catch(() => {});
+  }, []);
+
+  const toggleFacilitatorMode = useCallback(async () => {
+    const next = facilitatorMode === "full" ? "lite" : "full";
+    setModeLoading(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/room/mode`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: next }),
+      });
+      const data = await res.json();
+      setFacilitatorMode(data.mode ?? next);
+    } catch (e) {
+      console.error("Failed to switch mode", e);
+    } finally {
+      setModeLoading(false);
+    }
+  }, [facilitatorMode]);
 
   // ── WebRTC state ────────────────────────────────────────────────────────
   // Map of sessionId → MediaStream (remote video streams)
@@ -487,6 +516,10 @@ export const ChatProvider = ({ children }) => {
           setLastFacilitatorAction(data.action ?? null);
           break;
 
+        case "mode_changed":
+          setFacilitatorMode(data.mode);
+          break;
+
         // ── WebRTC signaling ───────────────────────────────────────────
         case "webrtc_offer": {
           const pc = createPeerConnection(data.fromSessionId);
@@ -845,6 +878,9 @@ export const ChatProvider = ({ children }) => {
         remoteStreams, // { [sessionId]: MediaStream }
         facilitatorLogs,
         lastFacilitatorAction,
+        facilitatorMode,
+        toggleFacilitatorMode,
+        modeLoading,
       }}
     >
       {children}
