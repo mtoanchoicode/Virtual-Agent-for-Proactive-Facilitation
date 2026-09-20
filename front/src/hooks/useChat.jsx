@@ -29,23 +29,23 @@ const ICE_SERVERS = {
     },
     {
       urls: "turn:global.relay.metered.ca:80",
-      username: "4a675b16a4b55511680ac09e",
-      credential: "wcY9X5cDbKj8d4g2",
+      username: "dc4dfc7fa6b760476dbb50eb",
+      credential: "m/vzZv4B0o4L8Ch/",
     },
     {
       urls: "turn:global.relay.metered.ca:80?transport=tcp",
-      username: "4a675b16a4b55511680ac09e",
-      credential: "wcY9X5cDbKj8d4g2",
+      username: "dc4dfc7fa6b760476dbb50eb",
+      credential: "m/vzZv4B0o4L8Ch/",
     },
     {
       urls: "turn:global.relay.metered.ca:443",
-      username: "4a675b16a4b55511680ac09e",
-      credential: "wcY9X5cDbKj8d4g2",
+      username: "dc4dfc7fa6b760476dbb50eb",
+      credential: "m/vzZv4B0o4L8Ch/",
     },
     {
       urls: "turns:global.relay.metered.ca:443?transport=tcp",
-      username: "4a675b16a4b55511680ac09e",
-      credential: "wcY9X5cDbKj8d4g2",
+      username: "dc4dfc7fa6b760476dbb50eb",
+      credential: "m/vzZv4B0o4L8Ch/",
     },
   ],
 };
@@ -67,7 +67,7 @@ export const ChatProvider = ({ children }) => {
   const [participantEntropies, setParticipantEntropies] = useState({});
   const [facilitatorLogs, setFacilitatorLogs] = useState([]);
   const [lastFacilitatorAction, setLastFacilitatorAction] = useState(null);
-  
+
   // ── Facilitator Mode ─────────────────────────────────────────────────────
   const [facilitatorMode, setFacilitatorMode] = useState("full");
   const [modeLoading, setModeLoading] = useState(false);
@@ -76,7 +76,7 @@ export const ChatProvider = ({ children }) => {
     fetch(`${BACKEND_URL}/room/mode`)
       .then((r) => r.json())
       .then((data) => setFacilitatorMode(data.mode))
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const toggleFacilitatorMode = useCallback(async () => {
