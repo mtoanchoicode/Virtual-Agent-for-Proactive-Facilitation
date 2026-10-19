@@ -4,6 +4,8 @@
 .DS_Store
 Thumbs.db
 *.log
+history_debug.txt
+timing_log.txt
 *.tmp
 *.swp
 .vscode/
@@ -27,6 +29,9 @@ research_stuff/
 .env.test.local
 .env.production.local
 ffmpeg-8.1/
+
+# Vite cache timestamp files
+*.timestamp-*.mjs
 
 # Logs
 npm-debug.log*
