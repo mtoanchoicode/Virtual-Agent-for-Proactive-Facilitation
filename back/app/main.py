@@ -25,12 +25,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.middleware("http")
-async def add_coop_coep_headers(request, call_next):
-    response = await call_next(request)
-    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
-    response.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
-    return response
+# NOTE: COOP/COEP headers are intentionally NOT added here.
+# They are set by the frontend (Vite/Vercel) only. Adding them to backend
+# API responses blocks cross-origin resource loading when frontend (Vercel)
+# and backend (Render) are on different domains.
 
 os.makedirs(os.path.join(BASE_DIR, "audios"), exist_ok=True)
 

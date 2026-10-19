@@ -263,6 +263,16 @@ export function Avatar(props) {
       audioCtx.resume();
     }
 
+    // Disconnect previous source to avoid audio accumulation / overlapping playback
+    if (sourceRef.current) {
+      try { sourceRef.current.disconnect(); } catch (_) {}
+      sourceRef.current = null;
+    }
+    if (analyserRef.current) {
+      try { analyserRef.current.disconnect(); } catch (_) {}
+      analyserRef.current = null;
+    }
+
     const analyser = audioCtx.createAnalyser();
     analyser.fftSize = 256;
     analyser.smoothingTimeConstant = 0.5;
@@ -281,7 +291,8 @@ export function Avatar(props) {
     audio.onended = () => {
       onMessagePlayed();
       if (sourceRef.current) {
-        sourceRef.current.disconnect();
+        try { sourceRef.current.disconnect(); } catch (_) {}
+        sourceRef.current = null;
       }
     };
   }, [message]);
