@@ -9,6 +9,7 @@ import { useChat } from "./hooks/useChat";
 import { ImageSegmenter, FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 import { MicTestModal } from "./components/MicTestModal";
 import { SimulatorPanel } from "./components/SimulatorPanel";
+import RankingBoard from "./components/RankingBoard";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "";
 
@@ -1227,7 +1228,7 @@ function App() {
     <>
       <Loader />
       <Leva hidden />
-      <UI />
+      <RankingBoard />
       {facilitatorMode === "lite" && <LiteAudioPlayer />}
 
       {showJoinModal && <JoinModal onJoin={handleJoin} />}
@@ -1235,6 +1236,22 @@ function App() {
         <SimulatorPanel onClose={() => setShowSimulator(false)} />
       )}
 
+      {/* Shell: shrinks from the right while the ranking drawer is open (--ranking-offset set by RankingBoard).
+          The transform makes it the containing block for fixed children such as <UI />. */}
+      <div
+        id="app-shell"
+        style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          bottom: 0,
+          right: "var(--ranking-offset, 0px)",
+          transition: "right 0.25s ease",
+          transform: "translateZ(0)",
+          overflow: "hidden",
+        }}
+      >
+      <UI />
       <main
         className="h-screen overflow-hidden flex flex-col p-4 md:p-6 lg:p-10"
         style={{ fontFamily: "'DM Sans', sans-serif" }}
@@ -1522,6 +1539,7 @@ function App() {
           </div>
         </section>
       </main>
+      </div>
     </>
   );
 }

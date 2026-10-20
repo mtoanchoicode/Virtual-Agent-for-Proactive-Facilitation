@@ -67,6 +67,8 @@ export const ChatProvider = ({ children }) => {
   const [participantEntropies, setParticipantEntropies] = useState({});
   const [facilitatorLogs, setFacilitatorLogs] = useState([]);
   const [lastFacilitatorAction, setLastFacilitatorAction] = useState(null);
+  // Shared ranking board snapshot from the server (null until the server sends one).
+  const [board, setBoard] = useState(null);
 
   // ── Facilitator Mode ─────────────────────────────────────────────────────
   const [facilitatorMode, setFacilitatorMode] = useState("full");
@@ -447,6 +449,7 @@ export const ChatProvider = ({ children }) => {
           setMessages([]);
           setFacilitatorLogs([]);
           setLastFacilitatorAction(null);
+          setBoard(null);
           // Close all peer connections
           Object.values(peerConnectionsRef.current).forEach((pc) => pc.close());
           peerConnectionsRef.current = {};
@@ -518,6 +521,10 @@ export const ChatProvider = ({ children }) => {
 
         case "mode_changed":
           setFacilitatorMode(data.mode);
+          break;
+
+        case "board_state":
+          setBoard(data);
           break;
 
         // ── WebRTC signaling ───────────────────────────────────────────
@@ -807,8 +814,20 @@ export const ChatProvider = ({ children }) => {
     setMessages([]);
     setFacilitatorLogs([]);
     setLastFacilitatorAction(null);
+    setBoard(null);
     wsRef.current?.close();
   }, [stopAudioStreaming]);
+
+  // ── Shared ranking board actions ─────────────────────────────────────────
+  const sendBoard = useCallback((payload) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(payload));
+    }
+  }, []);
+  const boardDragStart = useCallback((itemId) => sendBoard({ type: "board_drag_start", itemId }), [sendBoard]);
+  const boardDragEnd = useCallback((itemId) => sendBoard({ type: "board_drag_end", itemId }), [sendBoard]);
+  const boardMove = useCallback((itemId, toIndex) => sendBoard({ type: "board_move", itemId, toIndex }), [sendBoard]);
+  const boardAgree = useCallback((agreed) => sendBoard({ type: "board_agree", agreed }), [sendBoard]);
 
   const toggleMic = useCallback(() => {
     if (!sessionId) return;
@@ -881,6 +900,11 @@ export const ChatProvider = ({ children }) => {
         facilitatorMode,
         toggleFacilitatorMode,
         modeLoading,
+        board,
+        boardDragStart,
+        boardDragEnd,
+        boardMove,
+        boardAgree,
       }}
     >
       {children}

@@ -107,4 +107,4 @@ docker-compose.override.yml
 # Misc
 # =========================
 *.bak
-*.orig
+*.origboard_log.jsonl

@@ -17,6 +17,7 @@ from app.core.config import (
 )
 from app.services.llm_service import shared_conv
 from app.services import scenario
+from app.core.board import Board
 from app.services.audio_service import is_speech_present, whisper_model, stream_audio_chunks
 from app.utils.helpers import clean_transcript
 
@@ -160,6 +161,7 @@ class Room:
         self._turn_count: int = 0
         self.mode: str = "full"  # "full" or "lite"
         self._stt_bad_models: Set[str] = set()
+        self.board = Board()  # shared ranking board; never shown to the facilitator LLM
 
         # Scenario (e.g. Lost at Sea) clock and proactive-speech state
         self.scenario_started_at: float = 0.0
@@ -178,7 +180,42 @@ class Room:
     async def remove(self, session_id: str) -> Optional[Participant]:
         async with self._lock:
             p = self._participants.pop(session_id, None)
+            self.board.drop_session(session_id)
             return p
+
+    # ------------------------------------------------------------------ ranking board
+    async def broadcast_board(self) -> None:
+        if not scenario.ENABLED:
+            return
+        await self.broadcast({"type": "board_state", **self.board.snapshot(self._participants)})
+
+    async def send_board_to(self, session_id: str) -> None:
+        if not scenario.ENABLED:
+            return
+        await self.send_to(session_id, {"type": "board_state", **self.board.snapshot(self._participants)})
+
+    async def board_action(self, session_id: str, payload: dict) -> None:
+        """Handle board_drag_start / board_drag_end / board_move / board_agree from a client."""
+        p = self.get(session_id)
+        if p is None or not scenario.ENABLED:
+            return
+        kind = payload.get("type")
+        item_id = payload.get("itemId")
+        if kind == "board_drag_start":
+            self.board.start_drag(session_id, p.name, item_id)
+        elif kind == "board_drag_end":
+            self.board.end_drag(session_id, item_id)
+        elif kind == "board_move":
+            try:
+                to_index = int(payload.get("toIndex"))
+            except (TypeError, ValueError):
+                to_index = None
+            if to_index is not None:
+                self.board.move(session_id, p.name, item_id, to_index, self._participants)
+        elif kind == "board_agree":
+            self.board.set_agreed(session_id, p.name, bool(payload.get("agreed")), self._participants)
+        # Always send the authoritative state back, so a rejected move snaps the client back.
+        await self.broadcast_board()
 
     def get(self, session_id: str) -> Optional[Participant]:
         return self._participants.get(session_id)

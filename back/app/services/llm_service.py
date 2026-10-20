@@ -203,9 +203,8 @@ class ConversationManager:
                 "Do not ask a question."
             ),
             "WRAP_UP": (
-                "Time is up. Start with 'Time is up.' Then say you will read back what they agreed, list the ranks "
-                "agreed so far in order from the conversation, name the items still unranked, and ask them to settle "
-                "those right now. Do not add new opinions."
+                "Time is up. Say: 'Time is up. Finish placing your cards and agree on the board.' You cannot see "
+                "their board, so do not list, read back or guess any ranks. Do not add opinions or questions."
             ),
         }[kind]
         system_content = (

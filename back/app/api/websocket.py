@@ -84,7 +84,11 @@ async def voice_ws(websocket: WebSocket):
                         },
                         exclude=session_id,
                     )
+                    await room.send_board_to(session_id)
                     print(f"[room] {name} joined (session={session_id})")
+
+                elif msg_type in ("board_drag_start", "board_drag_end", "board_move", "board_agree"):
+                    await room.board_action(session_id, payload)
 
                 elif msg_type == "leave":
                     if participant is None:
@@ -105,6 +109,9 @@ async def voice_ws(websocket: WebSocket):
                     if len(room.participant_list()) == 0:
                         from app.services.llm_service import shared_conv
                         shared_conv.clear()
+                        room.board.reset()
+                    else:
+                        await room.broadcast_board()
 
                     participant = None
                     client_voice_active = False
@@ -214,4 +221,7 @@ async def voice_ws(websocket: WebSocket):
             if len(room.participant_list()) == 0:
                 from app.services.llm_service import shared_conv
                 shared_conv.clear()
+                room.board.reset()
+            else:
+                await room.broadcast_board()
             print(f"[room] {participant.name} disconnected")

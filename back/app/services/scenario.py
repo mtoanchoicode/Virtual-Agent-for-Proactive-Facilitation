@@ -31,6 +31,11 @@ ITEMS = [
     "Ocean fishing kit and pole",
 ]
 
+# Cards for the shared ranking board: [{"id": "...", "label": "..."}], in the fixed starting order.
+BOARD_ITEMS = [
+    {"id": f"item-{i + 1}", "label": label} for i, label in enumerate(ITEMS)
+]
+
 # Vocabulary hint for speech-to-text (helps with words like "sextant").
 STT_HINT = (
     "Two crew members in a life raft in the South Pacific ranking survival items. Items: sextant "
