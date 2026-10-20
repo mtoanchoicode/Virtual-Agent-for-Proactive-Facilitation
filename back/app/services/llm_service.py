@@ -1,10 +1,33 @@
 import base64
 from typing import List
 from app.services.audio_service import generate_audio_bytes
+from app.services import scenario
 
 # Max number of history entries kept in memory.
 # Each entry is one user-turn or one assistant-turn.
-MAX_HISTORY_LEN = 50
+# The scenario needs the whole session (which items are ranked), so keep far more.
+MAX_HISTORY_LEN = 300 if scenario.ENABLED else 50
+# How many recent entries are sent to the LLM.
+PROMPT_HISTORY_LEN = 300 if scenario.ENABLED else 14
+
+SCENARIO_ACTION_MENU = (
+    "- NO_ACTION: The default. Use it when the pair is exchanging ideas, giving reasons, answering each other, "
+    "or making a quick agreement.\n"
+    "- DEEPEN: Someone named a ranking or opinion without any reasoning, or gave a vague answer. "
+    "Ask for the reason behind it.\n"
+    "- RESOLVE: They disagree on an item and are repeating positions, or are stuck. Ask each one what "
+    "survival need their pick serves, or propose a way to compare, without choosing for them.\n"
+    "- NEXT_ITEM: An item has been agreed, or they have dwelled on one item too long while others are unranked. "
+    "Name one or two items not yet ranked and invite them to move on.\n"
+    "- CLARIFY: A transcript looks garbled or mishears an item name (e.g. 'sex tent' for sextant). "
+    "Confirm which of the 15 items they mean.\n"
+    "- REDIRECT: They ask you for the answer, or drift off task. Say you don't have the answer and "
+    "bring them back to the ranking."
+)
+
+
+def _scenario_context() -> str:
+    return scenario.SCENARIO_BRIEF if scenario.ENABLED else ""
 MAX_TRANSCRIPT_LOG_LEN = 200
 
 
@@ -102,6 +125,30 @@ class ConversationManager:
                 "ACTION: ENCOURAGE\n"
                 "TEXT: <your spoken sentence>"
             )
+        elif scenario.ENABLED:
+            system_content = (
+                "You are Yacine, an AI meeting facilitator.\n\n"
+                f"{scenario.SCENARIO_BRIEF}\n\n"
+                "Track from the conversation which items have an AGREED rank (both said yes) and which are still open. "
+                "Use the [PROGRESS] metadata for the clock.\n\n"
+                "After each user turn, decide whether to speak or stay quiet. Speak only when it clearly helps; "
+                "silence is better than interrupting a productive exchange.\n\n"
+                f"Choose ONE action:\n{SCENARIO_ACTION_MENU}\n\n"
+                "Decision guide:\n"
+                "- Partner asks partner a question -> NO_ACTION\n"
+                "- 'Yeah, agree, water first.' -> NO_ACTION\n"
+                "- 'Maybe the radio?' 'Hmm, I guess.' -> DEEPEN\n"
+                "- 'Mirror is number one!' 'No, water is number one!' -> RESOLVE\n"
+                "- 'Ok cushion is nine.' 'Fine.' with many items unranked -> NEXT_ITEM\n"
+                "- 'Just tell us the right order.' -> REDIRECT\n\n"
+                "Rules: one sentence, under 20 words, one question at a time, never repeat a question you already asked, "
+                "never state which item matters more, never mention rankings you were not told.\n\n"
+                "Reply ONLY in this exact format:\n"
+                "ACTION: <ACTION>\n"
+                "TEXT: <your spoken sentence>"
+            )
+            if metadata:
+                system_content += f"\n\n{metadata}"
         else:
             action_menu = (
                 "- NO_ACTION: The default choice. Use this if the conversation is flowing, users are answering each other, or if a user just gave a simple agreement (e.g., 'yeah', 'ok').\n"
@@ -127,8 +174,47 @@ class ConversationManager:
             if metadata:
                 system_content += f"\n\n{metadata}"
 
-        messages = [{"role": "system", "content": system_content}] + self.history[-14:]
+        if scenario.ENABLED and (force_summarize or force_encourage_target):
+            system_content = f"{scenario.SCENARIO_BRIEF}\n\n{system_content}"
+
+        messages = [{"role": "system", "content": system_content}] + self.history[-PROMPT_HISTORY_LEN:]
         return messages
+
+    def get_proactive_prompt(self, kind: str, elapsed_sec: float) -> List[dict]:
+        """Prompt for facilitator-initiated speech that is not triggered by a user turn.
+
+        kind: OPEN (kickoff), NUDGE (both quiet), TIME_CHECK, WRAP_UP.
+        """
+        remaining_min = max(1, round((scenario.TIME_LIMIT_SEC - elapsed_sec) / 60))
+        instructions = {
+            "OPEN": (
+                "The session is starting. Warmly welcome both participants, say in one or two short sentences that "
+                f"they have {scenario.TIME_LIMIT_SEC // 60} minutes to agree together on one ranking of the 15 items, "
+                "and invite them to start with whichever item feels most important."
+            ),
+            "NUDGE": (
+                "Both participants have gone quiet. Gently break the silence with exactly ONE short, easy question "
+                "(not two) that gets them talking, such as asking either of them to say which item they feel is "
+                "next and why. Do not suggest what is important and do not repeat a question you already asked."
+            ),
+            "TIME_CHECK": (
+                f"Give a time check. Start your sentence with 'About {remaining_min} minutes left.' Then, from the "
+                "conversation, say how many of the 15 items still have no agreed rank and encourage a steady pace. "
+                "Do not ask a question."
+            ),
+            "WRAP_UP": (
+                "Time is up. Start with 'Time is up.' Then say you will read back what they agreed, list the ranks "
+                "agreed so far in order from the conversation, name the items still unranked, and ask them to settle "
+                "those right now. Do not add new opinions."
+            ),
+        }[kind]
+        system_content = (
+            "You are Yacine, an AI meeting facilitator.\n\n"
+            f"{_scenario_context()}\n\n"
+            f"{instructions}\n"
+            "Speak naturally in at most two short sentences (under 35 words). Reply with the spoken text only."
+        )
+        return [{"role": "system", "content": system_content}] + self.history[-PROMPT_HISTORY_LEN:]
 
     def get_lite_prompt(self) -> List[dict]:
         """

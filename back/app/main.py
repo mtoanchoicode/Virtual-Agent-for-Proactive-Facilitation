@@ -66,7 +66,9 @@ if __name__ == "__main__":
         "port": port,
     }
 
-    if ssl_keyfile and ssl_certfile:
+    if os.getenv("HTTP_ONLY") == "1":
+        pass  # plain HTTP (e.g. on networks that block local HTTPS)
+    elif ssl_keyfile and ssl_certfile:
         run_kwargs["ssl_keyfile"] = ssl_keyfile
         run_kwargs["ssl_certfile"] = ssl_certfile
     else:

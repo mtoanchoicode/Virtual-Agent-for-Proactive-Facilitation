@@ -15,41 +15,48 @@ const httpsConfig =
       }
     : true;
 
+// HTTP_ONLY=1 -> serve over plain HTTP and proxy to the backend over HTTP
+const httpOnly = process.env.HTTP_ONLY === "1";
+const backendHttp = httpOnly ? "http://127.0.0.1:3000" : "https://127.0.0.1:3000";
+const backendWs = httpOnly ? "ws://127.0.0.1:3000" : "wss://127.0.0.1:3000";
+
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
   server: {
     host: "0.0.0.0",
     port: 5173,
-    https: httpsConfig,
-    hmr: {
-      clientPort: 443, // Forces HMR WebSocket to use standard HTTPS port for ngrok
-    },
+    https: httpOnly ? false : httpsConfig,
+    hmr: httpOnly
+      ? true
+      : {
+          clientPort: 443, // Forces HMR WebSocket to use standard HTTPS port for ngrok
+        },
     headers: {
       "Cross-Origin-Opener-Policy": "same-origin",
       "Cross-Origin-Embedder-Policy": "require-corp",
     },
     proxy: {
       "/api": {
-        target: "https://127.0.0.1:3000",
+        target: backendHttp,
         secure: false,
       },
       "/chat": {
-        target: "https://127.0.0.1:3000",
+        target: backendHttp,
         secure: false,
       },
       "/ws/voice": {
-        target: "wss://127.0.0.1:3000",
+        target: backendWs,
         ws: true,
         secure: false,
       },
       "/ws/mic_test": {
-        target: "wss://127.0.0.1:3000",
+        target: backendWs,
         ws: true,
         secure: false,
       },
       "/room": {
-        target: "https://127.0.0.1:3000",
+        target: backendHttp,
         secure: false,
       },
     },

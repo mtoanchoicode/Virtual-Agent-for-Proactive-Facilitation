@@ -13,6 +13,7 @@ from fastapi import WebSocket
 
 from app.core.config import client, SAMPLE_RATE, ROOM_SILENCE_THRESHOLD_MS, IMBALANCE_WORD_THRESHOLD, SUMMARY_TRIGGERS
 from app.services.llm_service import shared_conv
+from app.services import scenario
 from app.services.audio_service import is_speech_present, whisper_model, stream_audio_chunks
 from app.utils.helpers import clean_transcript
 
@@ -147,6 +148,16 @@ class Room:
         self._turn_count: int = 0
         self.mode: str = "full"  # "full" or "lite"
 
+        # Scenario (e.g. Lost at Sea) clock and proactive-speech state
+        self.scenario_started_at: float = 0.0
+        self._scenario_task: Optional[asyncio.Task] = None
+        self._last_activity: float = 0.0   # last time anyone (user or AI) spoke
+        self._checkpoints_done: Set[int] = set()
+        self._wrapped_up: bool = False
+
+    def scenario_elapsed(self) -> float:
+        return time.time() - self.scenario_started_at if self.scenario_started_at else 0.0
+
     async def add(self, participant: Participant) -> None:
         async with self._lock:
             self._participants[participant.session_id] = participant
@@ -205,11 +216,17 @@ class Room:
             "participants": self.participant_list(),
         })
         await self.broadcast_log("[room] Voice session started", "success")
+        if scenario.ENABLED:
+            self._scenario_task = asyncio.create_task(self._scenario_loop())
 
     async def deactivate_voice_session(self) -> None:
         if not self.voice_session_active:
             return
         self.voice_session_active = False
+        if self._scenario_task and not self._scenario_task.done():
+            self._scenario_task.cancel()
+        self._scenario_task = None
+        self.scenario_started_at = 0.0
         self._cancel_silence_timer()
         self._turn_active = False
         for p in self._participants.values():
@@ -237,6 +254,7 @@ class Room:
 
         if speaking:
             p.last_speech_time = now
+            self._last_activity = now
 
         if self._processing:
             # Smooth the speaking signal: if they spoke within the last 500ms, consider it a continuous burst
@@ -387,7 +405,8 @@ class Room:
                 def do_transcribe():
                     buf.seek(0)
                     # beam_size=1 (greedy) is 3-5x faster than beam_size=5 with minimal accuracy loss
-                    segments, info = whisper_model.transcribe(buf, beam_size=5, language="en")
+                    hint = scenario.STT_HINT if scenario.ENABLED else None
+                    segments, info = whisper_model.transcribe(buf, beam_size=5, language="en", initial_prompt=hint)
                     return " ".join([segment.text for segment in segments])
                 text = await loop.run_in_executor(None, do_transcribe)
                 text = text.strip()
@@ -396,6 +415,7 @@ class Room:
                     model="whisper-1", 
                     file=buf,
                     language="en",
+                    **({"prompt": scenario.STT_HINT} if scenario.ENABLED else {}),
                 )
                 text = res.text.strip()
                 
@@ -442,6 +462,9 @@ class Room:
                 "msgId": msg_id,
             })
 
+            # Count the facilitator's own speech as activity (approx. playback time)
+            self._last_activity = max(self._last_activity, time.time() + len(text.split()) * 0.4)
+
             if idx == 0:
                 timing["t_tts_done"] = time.time()
                 first = timing.get("t_tts_first_chunk") or timing["t_tts_done"]
@@ -454,6 +477,100 @@ class Room:
         except Exception as e:
             import traceback; traceback.print_exc()
             print(f"[room] ERROR in _process_and_broadcast chunk {idx}: {e}")
+
+    async def _scenario_loop(self) -> None:
+        """Facilitator-initiated speech for the scenario: kickoff, silence nudges, time checks, wrap-up.
+        Never speaks while a user turn is in progress or being processed."""
+        try:
+            # Wait until both participants are present before starting the clock.
+            while len(self.active_participants) < 2:
+                await asyncio.sleep(1)
+            await asyncio.sleep(1.5)
+
+            self.scenario_started_at = time.time()
+            self._last_activity = self.scenario_started_at
+            self._checkpoints_done = set()
+            self._wrapped_up = False
+            await self.broadcast_log("[scenario] Both participants present — session clock started", "success")
+            await self._run_proactive("OPEN")
+
+            while self.voice_session_active:
+                await asyncio.sleep(1)
+                if self.mode != "full" or self._processing or self._turn_active:
+                    continue
+                now = time.time()
+                elapsed = now - self.scenario_started_at
+
+                if elapsed >= scenario.TIME_LIMIT_SEC and not self._wrapped_up:
+                    self._wrapped_up = True
+                    await self._run_proactive("WRAP_UP")
+                    continue
+
+                due = [c for c in scenario.TIME_CHECKPOINTS_SEC if elapsed >= c and c not in self._checkpoints_done]
+                if due and not self._wrapped_up:
+                    # Only the latest due checkpoint is spoken; earlier missed ones are skipped.
+                    self._checkpoints_done.update(due)
+                    await self._run_proactive("TIME_CHECK")
+                    continue
+
+                if not self._wrapped_up and now - self._last_activity >= scenario.SILENCE_NUDGE_SEC:
+                    await self._run_proactive("NUDGE")
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            import traceback; traceback.print_exc()
+
+    async def _run_proactive(self, kind: str) -> None:
+        """Run one facilitator-initiated utterance, interruptible like a normal turn."""
+        async with self._turn_lock:
+            if self._processing or self._turn_active:
+                return
+            self._processing = True
+        self._interrupted = False
+        try:
+            self._current_turn_task = asyncio.create_task(self._proactive_turn(kind))
+            await self._current_turn_task
+        except asyncio.CancelledError:
+            print(f"[room] proactive {kind} was cancelled due to interruption.")
+        finally:
+            self._current_turn_task = None
+            if not self._interrupted:
+                self._processing = False
+            # Don't re-fire immediately after speaking (or being cut off)
+            self._last_activity = max(self._last_activity, time.time())
+
+    async def _proactive_turn(self, kind: str) -> None:
+        await self.broadcast_log(f"[scenario] Facilitator initiates: {kind}", "info")
+        self._turn_count += 1
+        now = time.time()
+        timing: dict = {
+            "turn_n": self._turn_count,
+            "t_silence": now,
+            "t_process_start": now,
+            "action": kind,
+            "text_snippet": "",
+        }
+        try:
+            prompt = shared_conv.get_proactive_prompt(kind, self.scenario_elapsed())
+            response = await client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=prompt,
+                max_tokens=120,
+            )
+            text = (response.choices[0].message.content or "").strip()
+            text = re.sub(r"(?i)^(?:TEXT|MESSAGE):\s*", "", text)
+            if not text:
+                return
+            timing["text_snippet"] = text[:60]
+            await self.broadcast({"type": "facilitator_action", "action": kind})
+            shared_conv.add_ai_response(kind, text)
+            await self._process_and_broadcast(0, text, timing)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            await self.broadcast({"type": "error", "detail": str(e)})
 
     async def _process_turn(self, silence_at: float) -> None:
         """Route to full or lite processing based on room.mode."""
@@ -684,6 +801,11 @@ class Room:
             for p in self._participants.values():
                 time_since_speech = now - p.last_speech_time if p.last_speech_time > 0 else 0
                 metadata_parts.append(f"User '{p.name}' last spoke {time_since_speech:.1f} seconds ago.")
+            if scenario.ENABLED:
+                el = int(self.scenario_elapsed())
+                metadata_parts.append(
+                    f"[PROGRESS] {el // 60}:{el % 60:02d} of {scenario.TIME_LIMIT_SEC // 60}:{scenario.TIME_LIMIT_SEC % 60:02d} elapsed."
+                )
             metadata = "[METADATA]\n" + "\n".join(metadata_parts)
 
             # Detect imbalance
