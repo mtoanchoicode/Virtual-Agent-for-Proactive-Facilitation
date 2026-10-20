@@ -7,6 +7,7 @@ import {
   useState,
   useCallback,
 } from "react";
+import { setLang as setI18nLang } from "../i18n";
 
 const isSecure = window.location.protocol === "https:";
 const wsProtocol = isSecure ? "wss" : "ws";
@@ -73,6 +74,42 @@ export const ChatProvider = ({ children }) => {
   // ── Facilitator Mode ─────────────────────────────────────────────────────
   const [facilitatorMode, setFacilitatorMode] = useState("full");
   const [modeLoading, setModeLoading] = useState(false);
+
+  // ── Language (shared by the whole room; "en" is the default) ─────────────
+  const [language, setLanguageState] = useState("en");
+  const [languageLoading, setLanguageLoading] = useState(false);
+
+  const applyLanguage = useCallback((lang) => {
+    const next = lang === "vi" ? "vi" : "en";
+    setLanguageState(next);
+    setI18nLang(next);
+    try { document.documentElement.lang = next; } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/room/language`)
+      .then((r) => r.json())
+      .then((data) => data.language && applyLanguage(data.language))
+      .catch(() => { });
+  }, [applyLanguage]);
+
+  const toggleLanguage = useCallback(async () => {
+    const next = language === "en" ? "vi" : "en";
+    setLanguageLoading(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/room/language`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ language: next }),
+      });
+      const data = await res.json();
+      if (data.language) applyLanguage(data.language);
+    } catch (e) {
+      console.error("Failed to switch language", e);
+    } finally {
+      setLanguageLoading(false);
+    }
+  }, [language, applyLanguage]);
 
   useEffect(() => {
     fetch(`${BACKEND_URL}/room/mode`)
@@ -523,6 +560,10 @@ export const ChatProvider = ({ children }) => {
           setFacilitatorMode(data.mode);
           break;
 
+        case "language_changed":
+          applyLanguage(data.language);
+          break;
+
         case "board_state":
           setBoard(data);
           break;
@@ -900,6 +941,9 @@ export const ChatProvider = ({ children }) => {
         facilitatorMode,
         toggleFacilitatorMode,
         modeLoading,
+        language,
+        languageLoading,
+        toggleLanguage,
         board,
         boardDragStart,
         boardDragEnd,

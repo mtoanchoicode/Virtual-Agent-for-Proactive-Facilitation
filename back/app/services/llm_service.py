@@ -1,7 +1,7 @@
 import base64
 from typing import List
 from app.services.audio_service import generate_audio_bytes
-from app.services import scenario
+from app.services import scenario, lang
 
 # Max number of history entries kept in memory.
 # Each entry is one user-turn or one assistant-turn.
@@ -24,6 +24,19 @@ SCENARIO_ACTION_MENU = (
     "- REDIRECT: They ask you for the answer, or drift off task. Say you don't have the answer and "
     "bring them back to the ranking."
 )
+
+
+def _localize(messages: List[dict]) -> List[dict]:
+    """In Vietnamese, append the language directive (and Vietnamese item names) to the system prompt.
+    In English the messages are returned untouched."""
+    if not lang.is_vi():
+        return messages
+    extra = lang.VI_DIRECTIVE
+    if scenario.ENABLED:
+        extra = f"{scenario.SCENARIO_BRIEF_VI}\n\n{extra}"
+    first = dict(messages[0])
+    first["content"] = f"{first['content']}\n\n{extra}"
+    return [first] + messages[1:]
 
 
 def _scenario_context() -> str:
@@ -178,7 +191,7 @@ class ConversationManager:
             system_content = f"{scenario.SCENARIO_BRIEF}\n\n{system_content}"
 
         messages = [{"role": "system", "content": system_content}] + self.history[-PROMPT_HISTORY_LEN:]
-        return messages
+        return _localize(messages)
 
     def get_proactive_prompt(self, kind: str, elapsed_sec: float) -> List[dict]:
         """Prompt for facilitator-initiated speech that is not triggered by a user turn.
@@ -213,7 +226,7 @@ class ConversationManager:
             f"{instructions}\n"
             "Speak naturally in at most two short sentences (under 35 words). Reply with the spoken text only."
         )
-        return [{"role": "system", "content": system_content}] + self.history[-PROMPT_HISTORY_LEN:]
+        return _localize([{"role": "system", "content": system_content}] + self.history[-PROMPT_HISTORY_LEN:])
 
     def get_lite_prompt(self) -> List[dict]:
         """
@@ -246,7 +259,7 @@ class ConversationManager:
             else:
                 clean_history.append(entry)
 
-        return [{"role": "system", "content": system_content}] + clean_history
+        return _localize([{"role": "system", "content": system_content}] + clean_history)
 
 
 shared_conv = ConversationManager()

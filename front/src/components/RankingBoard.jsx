@@ -17,6 +17,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useChat } from "../hooks/useChat";
+import { useT, useLang, itemLabel } from "../i18n";
 
 // Cosmetic icons, keyed by card id (same order as back/app/services/scenario.py ITEMS).
 const ICONS = {
@@ -40,6 +41,7 @@ const ICONS = {
 const PANEL_WIDTH = 320;
 
 function Card({ id, label, rank, lockedBy }) {
+  const t = useT();
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
     useSortable({ id, disabled: !!lockedBy });
 
@@ -81,7 +83,7 @@ function Card({ id, label, rank, lockedBy }) {
         {label}
         {lockedBy && (
           <span style={{ display: "block", fontSize: 11, color: "#fbbf24" }}>
-            {lockedBy} is moving…
+            {lockedBy} {t("rank.moving", "is moving…")}
           </span>
         )}
       </span>
@@ -90,8 +92,8 @@ function Card({ id, label, rank, lockedBy }) {
         {...attributes}
         {...listeners}
         disabled={!!lockedBy}
-        aria-label={`Drag ${label}`}
-        title="Drag to reorder (or focus and press Space, then arrow keys)"
+        aria-label={`${t("rank.drag", "Drag")} ${label}`}
+        title={t("rank.dragTitle", "Drag to reorder (or focus and press Space, then arrow keys)")}
         style={{
           cursor: lockedBy ? "not-allowed" : isDragging ? "grabbing" : "grab",
           touchAction: "none",
@@ -110,6 +112,8 @@ function Card({ id, label, rank, lockedBy }) {
 
 export default function RankingBoard() {
   const { board, sessionId, participants, boardDragStart, boardDragEnd, boardMove, boardAgree } = useChat();
+  const t = useT();
+  const lang = useLang();
   const [open, setOpen] = useState(false);
   const [localOrder, setLocalOrder] = useState(null); // optimistic order until the server answers
   const [unseen, setUnseen] = useState(0);
@@ -159,8 +163,8 @@ export default function RankingBoard() {
   );
 
   const labels = useMemo(
-    () => Object.fromEntries((board?.items ?? []).map((it) => [it.id, it.label])),
-    [board?.items],
+    () => Object.fromEntries((board?.items ?? []).map((it) => [it.id, itemLabel(lang, it.id, it.label)])),
+    [board?.items, lang],
   );
 
   if (!board || !sessionId) return null;
@@ -187,7 +191,7 @@ export default function RankingBoard() {
       <button
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        aria-label={open ? "Close ranking board" : "Open ranking board"}
+        aria-label={open ? t("rank.close", "Close ranking board") : t("rank.open", "Open ranking board")}
         style={{
           position: "fixed",
           top: "42%",
@@ -207,7 +211,7 @@ export default function RankingBoard() {
           cursor: "pointer",
         }}
       >
-        {open ? "Close ▸" : "◂ Ranking"}
+        {open ? t("rank.closeTab", "Close ▸") : t("rank.openTab", "◂ Ranking")}
         {!open && unseen > 0 && (
           <span
             style={{
@@ -250,9 +254,9 @@ export default function RankingBoard() {
         }}
       >
         <div style={{ padding: "12px 14px 8px" }}>
-          <div style={{ fontWeight: 800, color: "#f1f5f9", fontSize: 15 }}>Survival ranking</div>
+          <div style={{ fontWeight: 800, color: "#f1f5f9", fontSize: 15 }}>{t("rank.title", "Survival ranking")}</div>
           <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
-            ▲ most important &nbsp;·&nbsp; ▼ least important
+            {lang === "vi" ? t("rank.legend", "") : <>▲ most important &nbsp;·&nbsp; ▼ least important</>}
           </div>
         </div>
 
@@ -267,7 +271,7 @@ export default function RankingBoard() {
             <SortableContext items={order} strategy={verticalListSortingStrategy}>
               {order.map((id, i) => {
                 const m = board.moving?.[id];
-                const lockedBy = m && m.sessionId !== sessionId ? m.name || "Partner" : null;
+                const lockedBy = m && m.sessionId !== sessionId ? m.name || t("rank.partner", "Partner") : null;
                 return <Card key={id} id={id} label={labels[id] ?? id} rank={i + 1} lockedBy={lockedBy} />;
               })}
             </SortableContext>
@@ -298,7 +302,7 @@ export default function RankingBoard() {
           </div>
           {board.allAgreed ? (
             <div style={{ fontSize: 13, fontWeight: 700, color: "#86efac", textAlign: "center" }}>
-              ✓ Both agreed — final ranking
+              {t("rank.bothAgreed", "✓ Both agreed — final ranking")}
             </div>
           ) : null}
           <button
@@ -318,10 +322,10 @@ export default function RankingBoard() {
               border: iAgreed ? "1px solid rgba(251,191,36,0.4)" : "1px solid rgba(255,255,255,0.2)",
             }}
           >
-            {iAgreed ? "Withdraw my agreement" : "I agree with this order"}
+            {iAgreed ? t("rank.withdraw", "Withdraw my agreement") : t("rank.agree", "I agree with this order")}
           </button>
           <div style={{ fontSize: 10.5, color: "#64748b", marginTop: 6, textAlign: "center" }}>
-            Moving any card clears everyone's agreement.
+            {t("rank.note", "Moving any card clears everyone's agreement.")}
           </div>
         </div>
       </aside>

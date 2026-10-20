@@ -17,7 +17,20 @@ _HALLUCINATIONS = {
     "subtitles by the amara.org community", "bye", "bye bye",
 }
 
-def clean_transcript(text: str) -> str:
+# Vietnamese equivalents (compared after lower-casing and stripping punctuation).
+_HALLUCINATIONS_VI = {
+    "hãy subscribe cho kênh ghiền mì gõ để không bỏ lỡ những video hấp dẫn",
+    "hãy đăng ký kênh để ủng hộ kênh của mình nhé",
+    "hãy subscribe cho kênh để không bỏ lỡ những video hấp dẫn",
+    "cảm ơn các bạn đã theo dõi và hẹn gặp lại các bạn trong những video tiếp theo",
+    "cảm ơn các bạn đã xem video",
+    "cảm ơn các bạn đã theo dõi",
+    "hẹn gặp lại các bạn trong những video tiếp theo",
+    "xin chào các bạn",
+    "phụ đề được thực hiện bởi cộng đồng amara.org",
+}
+
+def clean_transcript(text: str, lang: str = "en") -> str:
     """Collapse looping repeated words and drop known whole-transcript hallucinations."""
     if not text:
         return text
@@ -32,7 +45,9 @@ def clean_transcript(text: str) -> str:
     )
 
     cleaned = " ".join(text.split()).strip()
-    if cleaned.lower().strip(" .,!?") in _HALLUCINATIONS:
+    if cleaned.lower().strip(" .,!?") in _HALLUCINATIONS or (
+        lang == "vi" and cleaned.lower().strip(" .,!?") in _HALLUCINATIONS_VI
+    ):
         return ""
     return cleaned
 

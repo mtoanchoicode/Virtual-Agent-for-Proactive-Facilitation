@@ -59,3 +59,39 @@ SCENARIO_BRIEF = (
     "reason better: ask about priorities (what threatens survival first, and over what time span), "
     "surface disagreements, ask for the reasoning behind a pick, and keep them moving through all 15 items."
 )
+
+
+# ---------------------------------------------------------------------------------------------
+# Vietnamese (used only when the room language is "vi"; the English values above are untouched)
+# ---------------------------------------------------------------------------------------------
+ITEMS_VI = [
+    "Kính lục phân (sextant)",
+    "Gương cạo râu",
+    "Màn chống muỗi",
+    "Thùng nước 25 lít",
+    "Một thùng lương khô quân đội",
+    "Bản đồ Thái Bình Dương",
+    "Đệm ngồi nổi",
+    "Can hỗn hợp dầu/xăng 10 lít",
+    "Radio bán dẫn nhỏ",
+    "Tấm nhựa đục 20 feet vuông",
+    "Một lọ thuốc đuổi cá mập",
+    "Một chai cồn y tế",
+    "Dây nylon 15 feet",
+    "2 hộp sô-cô-la",
+    "Bộ cần câu cá biển",
+]
+
+STT_HINT_VI = (
+    "Hai thuyền viên trên bè cứu sinh ở Nam Thái Bình Dương đang xếp hạng các vật dụng sinh tồn: "
+    "kính lục phân, gương cạo râu, màn chống muỗi, thùng nước 25 lít, lương khô quân đội, bản đồ Thái Bình Dương, "
+    "đệm ngồi nổi, hỗn hợp dầu xăng, radio, tấm nhựa đục, thuốc đuổi cá mập, cồn y tế, dây nylon, "
+    "sô-cô-la, bộ cần câu cá. Xếp hạng từ một đến mười lăm."
+)
+
+SCENARIO_BRIEF_VI = (
+    "KỊCH BẢN (tiếng Việt): 'Lạc giữa biển'. Hai người tham gia là thuyền viên của một du thuyền bị cháy và đang chìm "
+    "ở Nam Thái Bình Dương. Họ đang ở trên một chiếc bè cứu sinh cao su có mái chèo. Danh sách 15 vật dụng còn lại:\n"
+    + "; ".join(ITEMS_VI)
+    + ". Khi nói chuyện hãy dùng tên tiếng Việt của các vật dụng này."
+)

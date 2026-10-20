@@ -2,6 +2,7 @@ import os
 import wave as wave_mod
 import numpy as np
 
+from app.services import lang
 from app.core.config import client, INT16_MAX, NOISE_FLOOR_RMS, SILERO_VAD_THRESHOLD
 
 whisper_model = None
@@ -84,7 +85,7 @@ async def generate_audio_bytes(text: str) -> bytes:
     try:
         import edge_tts
         print(f"[audio_service] Edge TTS streaming... (text: {text[:30]}...)")
-        voice = "en-US-GuyNeural"
+        voice = lang.tts_voice()
         communicate = edge_tts.Communicate(text, voice)
         chunks: list[bytes] = []
         async for chunk in communicate.stream():
@@ -116,7 +117,7 @@ async def stream_audio_chunks(text: str):
     """
     try:
         import edge_tts
-        communicate = edge_tts.Communicate(text, "en-US-GuyNeural")
+        communicate = edge_tts.Communicate(text, lang.tts_voice())
         chunk_n = 0
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":

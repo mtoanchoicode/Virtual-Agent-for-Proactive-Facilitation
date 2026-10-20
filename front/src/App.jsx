@@ -10,11 +10,13 @@ import { ImageSegmenter, FaceLandmarker, FilesetResolver } from "@mediapipe/task
 import { MicTestModal } from "./components/MicTestModal";
 import { SimulatorPanel } from "./components/SimulatorPanel";
 import RankingBoard from "./components/RankingBoard";
+import { useT, useLang, actionLabel } from "./i18n";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "";
 
 // ── Join Modal ──────────────────────────────────────────────────────────────
 function JoinModal({ onJoin }) {
+  const t = useT();
   const [name, setName] = useState("");
   const [showMicTest, setShowMicTest] = useState(false);
 
@@ -47,16 +49,16 @@ function JoinModal({ onJoin }) {
             className="mb-1 text-xl font-bold tracking-tight text-white"
             style={{ fontFamily: "'DM Sans', sans-serif" }}
           >
-            Join Meeting
+            {t("join.title", "Join Meeting")}
           </h2>
           <p className="mb-6 text-sm text-slate-400">
-            Enter your display name to enter the room.
+            {t("join.subtitle", "Enter your display name to enter the room.")}
           </p>
 
           <input
             autoFocus
             type="text"
-            placeholder="Your name…"
+            placeholder={t("join.placeholder", "Your name…")}
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
@@ -78,7 +80,7 @@ function JoinModal({ onJoin }) {
               cursor: "pointer",
             }}
           >
-            <span>🎙</span> Test my mic before joining
+            <span>🎙</span> {t("join.testMic", "Test my mic before joining")}
           </button>
 
           <button
@@ -92,7 +94,7 @@ function JoinModal({ onJoin }) {
               cursor: name.trim() ? "pointer" : "not-allowed",
             }}
           >
-            Join →
+            {t("join.button", "Join →")}
           </button>
         </div>
       </div>
@@ -102,6 +104,7 @@ function JoinModal({ onJoin }) {
 
 // ── Entropy Chart ───────────────────────────────────────────────────────────
 function EntropyChart({ data }) {
+  const t = useT();
   const width = 100;
   const height = 30;
   const points = data.map((d, i) => {
@@ -116,7 +119,7 @@ function EntropyChart({ data }) {
   return (
     <div className="absolute top-4 right-4 z-20 flex flex-col items-end gap-1">
       <div className="text-[10px] font-bold uppercase tracking-widest" style={{ color, textShadow: "0 1px 2px rgba(0,0,0,0.8)" }}>
-        Entropy: {Math.round(latestValue)}%
+        {t("entropy", "Entropy")}: {Math.round(latestValue)}%
       </div>
       <svg width={width} height={height} className="overflow-visible opacity-90" viewBox={`0 0 ${width} ${height}`}>
         <polyline
@@ -377,6 +380,7 @@ function ParticipantCell({
   onToggleWebcam,
 }) {
   const { updateEntropy, participantEntropies } = useChat();
+  const t = useT();
   const [blurActive, setBlurActive] = useState(false);
   const [entropyHistory, setEntropyHistory] = useState(Array(50).fill(0));
 
@@ -496,7 +500,7 @@ function ParticipantCell({
           {participant.name}
           {isMe && (
             <span className="ml-2 rounded-full bg-sky-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-sky-300">
-              You
+              {t("cell.you", "You")}
             </span>
           )}
         </p>
@@ -509,7 +513,7 @@ function ParticipantCell({
                 : "rgb(100,116,139)",
           }}
         >
-          Participant
+          {t("cell.participant", "Participant")}
         </p>
 
         {/* Controls row */}
@@ -533,15 +537,15 @@ function ParticipantCell({
                   color: micActive ? "#86efac" : "#fca5a5",
                   backdropFilter: "blur(8px)",
                 }}
-                title={micActive ? "Mute your mic" : "Unmute your mic"}
+                title={micActive ? t("cell.muteTitle", "Mute your mic") : t("cell.unmuteTitle", "Unmute your mic")}
               >
                 {micActive ? (
                   <>
-                    <MicOnIcon /> Mute
+                    <MicOnIcon /> {t("cell.mute", "Mute")}
                   </>
                 ) : (
                   <>
-                    <MicOffIcon /> Unmute
+                    <MicOffIcon /> {t("cell.unmute", "Unmute")}
                   </>
                 )}
               </button>
@@ -560,15 +564,15 @@ function ParticipantCell({
                   color: webcamActive ? "#a5b4fc" : "#94a3b8",
                   backdropFilter: "blur(8px)",
                 }}
-                title={webcamActive ? "Turn off camera" : "Turn on camera"}
+                title={webcamActive ? t("cell.camOffTitle", "Turn off camera") : t("cell.camOnTitle", "Turn on camera")}
               >
                 {webcamActive ? (
                   <>
-                    <CamOnIcon /> Cam off
+                    <CamOnIcon /> {t("cell.camOff", "Cam off")}
                   </>
                 ) : (
                   <>
-                    <CamOffIcon /> Cam on
+                    <CamOffIcon /> {t("cell.camOn", "Cam on")}
                   </>
                 )}
               </button>
@@ -585,7 +589,7 @@ function ParticipantCell({
               }}
             >
               {participant.micActive ? <MicOnIcon /> : <MicOffIcon />}
-              <span>{participant.micActive ? "Live" : "Muted"}</span>
+              <span>{participant.micActive ? t("cell.live", "Live") : t("cell.muted", "Muted")}</span>
             </div>
           )}
 
@@ -604,15 +608,15 @@ function ParticipantCell({
                 color: blurActive ? "#d8b4fe" : "#94a3b8",
                 backdropFilter: "blur(8px)",
               }}
-              title={blurActive ? "Turn off background blur" : "Turn on background blur"}
+              title={blurActive ? t("cell.blurOffTitle", "Turn off background blur") : t("cell.blurOnTitle", "Turn on background blur")}
             >
               {blurActive ? (
                 <>
-                  <BlurOnIcon /> Blur on
+                  <BlurOnIcon /> {t("cell.blurOn", "Blur on")}
                 </>
               ) : (
                 <>
-                  <BlurOffIcon /> Blur off
+                  <BlurOffIcon /> {t("cell.blurOff", "Blur off")}
                 </>
               )}
             </button>
@@ -632,6 +636,7 @@ const LOG_LEVEL_STYLES = {
 };
 
 function FacilitatorStatusBox({ logs, voiceSessionActive }) {
+  const t = useT();
   const [open, setOpen] = useState(false); // closed by default
   const bottomRef = useRef(null);
 
@@ -699,7 +704,7 @@ function FacilitatorStatusBox({ logs, voiceSessionActive }) {
             fontFamily: "'DM Mono', 'Fira Mono', monospace",
           }}
         >
-          Facilitator Log
+          {t("fac.log", "Facilitator Log")}
         </span>
 
         {/* LIVE label */}
@@ -714,7 +719,7 @@ function FacilitatorStatusBox({ logs, voiceSessionActive }) {
               fontFamily: "'DM Mono', monospace",
             }}
           >
-            LIVE
+            {t("fac.live", "LIVE")}
           </span>
         )}
 
@@ -753,7 +758,7 @@ function FacilitatorStatusBox({ logs, voiceSessionActive }) {
         >
           {logs.length === 0 ? (
             <span style={{ color: "#334155", fontStyle: "italic" }}>
-              Waiting for session to start…
+              {t("fac.waiting", "Waiting for session to start…")}
             </span>
           ) : (
             logs.map((entry) => {
@@ -797,6 +802,8 @@ const ACTION_STYLES = {
 };
 
 function ActionBadge({ action }) {
+  const t = useT();
+  const lang = useLang();
   // Always visible — show a placeholder when idle
   const isIdle = !action;
   const style = !isIdle
@@ -832,7 +839,7 @@ function ActionBadge({ action }) {
           transition: "color 0.35s ease",
         }}
       >
-        {isIdle ? "IDLE" : action}
+        {isIdle ? t("fac.idle", "IDLE") : actionLabel(lang, action)}
       </span>
     </div>
   );
@@ -840,6 +847,7 @@ function ActionBadge({ action }) {
 
 
 function EmptyCell() {
+  const t = useT();
   return (
     <div
       className="flex h-full flex-col items-center justify-center rounded-3xl"
@@ -865,7 +873,7 @@ function EmptyCell() {
         </svg>
       </div>
       <span className="text-xs uppercase tracking-[0.25em] text-slate-600">
-        Empty
+        {t("cell.empty", "Empty")}
       </span>
     </div>
   );
@@ -873,12 +881,13 @@ function EmptyCell() {
 
 // ── Lite Avatar View ─────────────────────────────────────────────────────────
 function LiteAvatarView({ roomState }) {
+  const t = useT();
   // Color + behaviour per state
   const stateConfig = {
-    idle:       { color: "#6366f1", glow: "rgba(99,102,241,0.35)",  label: "Idle",       bars: 4 },
-    listening:  { color: "#22c55e", glow: "rgba(34,197,94,0.45)",   label: "Listening",  bars: 7 },
-    processing: { color: "#f59e0b", glow: "rgba(245,158,11,0.45)",  label: "Thinking",   bars: 5 },
-    speaking:   { color: "#38bdf8", glow: "rgba(56,189,248,0.5)",   label: "Speaking",   bars: 9 },
+    idle:       { color: "#6366f1", glow: "rgba(99,102,241,0.35)",  label: t("state.idle", "Idle"),       bars: 4 },
+    listening:  { color: "#22c55e", glow: "rgba(34,197,94,0.45)",   label: t("state.listening", "Listening"),  bars: 7 },
+    processing: { color: "#f59e0b", glow: "rgba(245,158,11,0.45)",  label: t("state.processing", "Thinking"),   bars: 5 },
+    speaking:   { color: "#38bdf8", glow: "rgba(56,189,248,0.5)",   label: t("state.speaking", "Speaking"),   bars: 9 },
   };
   const cfg = stateConfig[roomState] ?? stateConfig.idle;
 
@@ -1184,7 +1193,11 @@ function App() {
     facilitatorMode,
     toggleFacilitatorMode,
     modeLoading,
+    language,
+    languageLoading,
+    toggleLanguage,
   } = useChat();
+  const t = useT();
 
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showSimulator, setShowSimulator] = useState(false);
@@ -1276,8 +1289,10 @@ function App() {
                 }}
               />
               {isJoined
-                ? `${participants.length} participant${participants.length !== 1 ? "s" : ""} in room`
-                : "Not in room"}
+                ? (language === "vi"
+                  ? `${participants.length} ${t("hdr.participants", "participants in room")}`
+                  : `${participants.length} participant${participants.length !== 1 ? "s" : ""} in room`)
+                : t("hdr.notInRoom", "Not in room")}
             </div>
 
             {isJoined && myName && (
@@ -1288,7 +1303,7 @@ function App() {
                   border: "1px solid rgba(14,165,233,0.25)",
                 }}
               >
-                Joined as {myName}
+                {t("hdr.joinedAs", "Joined as")} {myName}
               </div>
             )}
             
@@ -1320,20 +1335,38 @@ function App() {
                 cursor: pingStatus === "pinging" ? "wait" : "pointer",
                 border: "1px solid rgba(255,255,255,0.2)",
               }}
-              title="Ping backend to wake it up from Render free tier sleep"
+              title={t("hdr.pingTitle", "Ping backend to wake it up from Render free tier sleep")}
             >
-              {pingStatus === "pinging" ? "Waking up..." : pingStatus === "success" ? "Backend Awake ✓" : pingStatus === "error" ? "Ping Failed ✗" : "Wake Backend"}
+              {pingStatus === "pinging" ? t("hdr.waking", "Waking up...") : pingStatus === "success" ? t("hdr.awake", "Backend Awake ✓") : pingStatus === "error" ? t("hdr.pingFail", "Ping Failed ✗") : t("hdr.wake", "Wake Backend")}
             </button>
           </div>
 
           {isJoined ? (
             <div className="flex flex-wrap items-center gap-2">
+              {/* Language toggle (EN / VI) — shared by the whole room */}
+              <button
+                id="lang-toggle-btn"
+                onClick={toggleLanguage}
+                disabled={languageLoading}
+                title={language === "vi" ? "Switch to English" : "Chuyển sang tiếng Việt"}
+                className="flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-semibold transition-all"
+                style={{
+                  background: language === "vi" ? "rgba(239,68,68,0.15)" : "rgba(148,163,184,0.08)",
+                  border: language === "vi" ? "1px solid rgba(239,68,68,0.4)" : "1px solid rgba(148,163,184,0.18)",
+                  color: language === "vi" ? "#fca5a5" : "#94a3b8",
+                  opacity: languageLoading ? 0.6 : 1,
+                  cursor: languageLoading ? "not-allowed" : "pointer",
+                }}
+              >
+                🌐 {language === "vi" ? "VI · Tiếng Việt" : "EN · English"}
+              </button>
+
               {/* Mode toggle */}
               <button
                 id="mode-toggle-btn"
                 onClick={toggleFacilitatorMode}
                 disabled={modeLoading}
-                title={`Switch to ${facilitatorMode === "full" ? "Lite" : "Full"} Mode`}
+                title={language === "vi" ? `${t("hdr.switchTo", "Switch to")} ${facilitatorMode === "full" ? t("hdr.lite", "Lite") : t("hdr.full", "Full")}` : `Switch to ${facilitatorMode === "full" ? "Lite" : "Full"} Mode`}
                 className="flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-semibold transition-all"
                 style={{
                   background: facilitatorMode === "lite"
@@ -1373,14 +1406,14 @@ function App() {
                     }}
                   />
                 </span>
-                {facilitatorMode === "lite" ? "Lite" : "Full"}
+                {facilitatorMode === "lite" ? t("hdr.lite", "Lite") : t("hdr.full", "Full")}
               </button>
 
               {/* Simulator toggle button */}
               <button
                 id="sim-toggle-btn"
                 onClick={() => setShowSimulator((v) => !v)}
-                title={showSimulator ? "Close simulator" : "Open User 2 Simulator"}
+                title={showSimulator ? t("hdr.simClose", "Close simulator") : t("hdr.simOpen", "Open User 2 Simulator")}
                 className="flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-semibold transition-all"
                 style={{
                   background: showSimulator
@@ -1403,7 +1436,7 @@ function App() {
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
                 </svg>
-                {showSimulator ? "Hide Simulator" : "Add Simulator"}
+                {showSimulator ? t("hdr.simHide", "Hide Simulator") : t("hdr.simAdd", "Add Simulator")}
               </button>
 
               {/* Leave */}
@@ -1415,7 +1448,7 @@ function App() {
                   border: "1px solid rgba(239,68,68,0.25)",
                 }}
               >
-                Leave Meeting
+                {t("hdr.leave", "Leave Meeting")}
               </button>
             </div>
           ) : (
@@ -1426,7 +1459,7 @@ function App() {
                 background: "linear-gradient(135deg, #0ea5e9, #6366f1)",
               }}
             >
-              Join Meeting
+              {t("hdr.join", "Join Meeting")}
             </button>
           )}
         </header>
@@ -1478,7 +1511,7 @@ function App() {
                   border: "1px solid rgba(148,163,184,0.15)",
                 }}
               >
-                AI Facilitator
+                {t("fac.title", "AI Facilitator")}
               </div>
               <ActionBadge action={lastFacilitatorAction} />
             </div>

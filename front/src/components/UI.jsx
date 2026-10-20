@@ -1,22 +1,26 @@
 // front/src/components/UI.jsx
 import { useRef } from "react";
 import { useChat } from "../hooks/useChat";
+import { useT } from "../i18n";
 
 // ── Room state → visual style map ────────────────────────────────────────────
 const ROOM_STATE_STYLES = {
-  idle: { btn: "bg-blue-500 hover:bg-blue-600", label: "Start Voice Session" },
+  idle: { btn: "bg-blue-500 hover:bg-blue-600", label: "Start Voice Session", key: "ui.startVoice" },
   listening: {
     btn: "bg-green-500 hover:bg-green-600",
     label: "Room Listening…",
+    key: "ui.roomListening",
   },
-  processing: { btn: "bg-amber-500 cursor-wait", label: "AI Processing…" },
+  processing: { btn: "bg-amber-500 cursor-wait", label: "AI Processing…", key: "ui.aiProcessing" },
   speaking: {
     btn: "bg-purple-500 cursor-not-allowed",
     label: "Avatar Speaking…",
+    key: "ui.avatarSpeaking",
   },
 };
 
 export const UI = ({ hidden, ...props }) => {
+  const t = useT();
   const input = useRef();
   const {
     // Text chat
@@ -47,8 +51,9 @@ export const UI = ({ hidden, ...props }) => {
     modelTranscripts,
   } = useChat();
 
-  const { btn: btnColor, label: stateLabel } =
+  const { btn: btnColor, label: stateLabelEn, key: stateKey } =
     ROOM_STATE_STYLES[roomState] ?? ROOM_STATE_STYLES.idle;
+  const stateLabel = t(stateKey, stateLabelEn);
   const isDisabled = roomState === "processing" || roomState === "speaking";
 
   const sendMessage = () => {
@@ -69,7 +74,7 @@ export const UI = ({ hidden, ...props }) => {
         {turnTranscripts.length > 0 && (
           <div>
             <p className="font-semibold text-blue-300 mb-1">
-              🎤 Conversation turn:
+              {t("ui.turn", "🎤 Conversation turn:")}
             </p>
             <div className="space-y-1">
               {turnTranscripts.map((t, i) => (
@@ -88,7 +93,7 @@ export const UI = ({ hidden, ...props }) => {
         {modelTranscripts.length > 0 && (
           <div>
             <p className="font-semibold text-purple-300 mb-1">
-              🤖 Yacine says:
+              {t("ui.yacine", "🤖 Yacine says:")}
             </p>
             <div className="space-y-1">
               {modelTranscripts.map((text, i) => (
@@ -124,7 +129,7 @@ export const UI = ({ hidden, ...props }) => {
         {sessionId && participants.length > 0 && (
           <div className="pointer-events-auto backdrop-blur-md bg-slate-900 bg-opacity-70 p-3 rounded-lg text-white text-xs max-w-xs">
             <p className="font-semibold text-slate-300 mb-2">
-              Room ({participants.length})
+              {t("ui.room", "Room")} ({participants.length})
             </p>
             <ul className="space-y-1">
               {participants.map((p) => (
@@ -146,7 +151,7 @@ export const UI = ({ hidden, ...props }) => {
                     }
                   >
                     {p.name}
-                    {p.sessionId === sessionId ? " (you)" : ""}
+                    {p.sessionId === sessionId ? t("ui.you", " (you)") : ""}
                   </span>
                 </li>
               ))}
@@ -164,8 +169,8 @@ export const UI = ({ hidden, ...props }) => {
             className={`pointer-events-auto ${btnColor} text-white p-4 rounded-md transition-colors`}
             title={
               voiceSessionActive
-                ? `Voice session: ${roomState}`
-                : "Start shared voice session"
+                ? `${t("ui.voiceSession", "Voice session")}: ${roomState}`
+                : t("ui.startShared", "Start shared voice session")
             }
           >
             {voiceSessionActive ? (
@@ -212,7 +217,7 @@ export const UI = ({ hidden, ...props }) => {
                 ? "bg-slate-600 hover:bg-slate-500"
                 : "bg-red-600 hover:bg-red-500"
               } text-white p-3 rounded-md transition-colors`}
-            title={micActive ? "Mute my mic" : "Unmute my mic"}
+            title={micActive ? t("ui.muteMy", "Mute my mic") : t("ui.unmuteMy", "Unmute my mic")}
           >
             {micActive ? (
               <svg
@@ -252,7 +257,7 @@ export const UI = ({ hidden, ...props }) => {
         <button
           onClick={() => setCameraZoomed(!cameraZoomed)}
           className="pointer-events-auto bg-slate-700 hover:bg-slate-600 text-white p-4 rounded-md transition-colors"
-          title={cameraZoomed ? "Zoom out" : "Zoom in"}
+          title={cameraZoomed ? t("ui.zoomOut", "Zoom out") : t("ui.zoomIn", "Zoom in")}
         >
           {cameraZoomed ? (
             <svg

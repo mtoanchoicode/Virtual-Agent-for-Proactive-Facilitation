@@ -18,6 +18,7 @@ from app.core.config import (
 from app.services.llm_service import shared_conv
 from app.services import scenario
 from app.core.board import Board
+from app.services import lang
 from app.services.audio_service import is_speech_present, whisper_model, stream_audio_chunks
 from app.utils.helpers import clean_transcript
 
@@ -448,7 +449,7 @@ class Room:
         epoch = p.stt_epoch
         # Context for the recogniser: scenario vocabulary + the end of what this person said last.
         # Short fragments transcribe much better with this.
-        prompt_parts = [scenario.STT_HINT] if scenario.ENABLED else []
+        prompt_parts = [scenario.STT_HINT_VI if lang.is_vi() else scenario.STT_HINT] if scenario.ENABLED else []
         if p.last_text:
             prompt_parts.append(p.last_text)
         stt_prompt = " ".join(prompt_parts) or None
@@ -459,14 +460,14 @@ class Room:
                 def do_transcribe():
                     buf.seek(0)
                     # beam_size=1 (greedy) is 3-5x faster than beam_size=5 with minimal accuracy loss
-                    segments, info = whisper_model.transcribe(buf, beam_size=5, language="en", initial_prompt=stt_prompt)
+                    segments, info = whisper_model.transcribe(buf, beam_size=5, language=lang.get(), initial_prompt=stt_prompt)
                     return " ".join([segment.text for segment in segments])
                 text = await loop.run_in_executor(None, do_transcribe)
                 text = text.strip()
             else:
                 text = await self._transcribe_api(buf, stt_prompt)
 
-            text = clean_transcript(text)
+            text = clean_transcript(text, lang.get())
             if epoch != p.stt_epoch:
                 print(f"[room][{p.name}] discarding late transcript: \"{text}\"")
                 return
@@ -486,7 +487,7 @@ class Room:
             try:
                 buf.seek(0)
                 kwargs = {"prompt": stt_prompt} if stt_prompt else {}
-                res = await client.audio.transcriptions.create(model=model, file=buf, language="en", **kwargs)
+                res = await client.audio.transcriptions.create(model=model, file=buf, language=lang.get(), **kwargs)
                 return res.text.strip()
             except Exception as e:
                 last_err = e
@@ -884,9 +885,10 @@ class Room:
             
             # Detect summary keywords in current turn
             force_summarize = False
+            triggers = SUMMARY_TRIGGERS + (lang.SUMMARY_TRIGGERS_VI if lang.is_vi() else [])
             for t in transcripts:
                 text_lower = t["text"].lower()
-                if any(trigger in text_lower for trigger in SUMMARY_TRIGGERS):
+                if any(trigger in text_lower for trigger in triggers):
                     force_summarize = True
                     break
 

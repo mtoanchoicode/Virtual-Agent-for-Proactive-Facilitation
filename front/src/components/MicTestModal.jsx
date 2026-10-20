@@ -2,6 +2,7 @@
 // Mic health checker — connects to backend Silero VAD to test if AI detects voice
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useT } from "../i18n";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const SAMPLE_RATE = 16000;
@@ -12,6 +13,7 @@ const wsProtocol = isSecure ? "wss" : "ws";
 
 // ── MicTestModal ─────────────────────────────────────────────────────────────
 export function MicTestModal({ onClose }) {
+  const t = useT();
   const [status, setStatus] = useState("idle"); // idle | requesting | active | denied
   const [aiVadDetected, setAiVadDetected] = useState(false);
 
@@ -88,8 +90,8 @@ export function MicTestModal({ onClose }) {
   const diagnose = () => {
     if (status !== "active") return null;
     if (aiVadDetected)
-      return { icon: "✅", color: "#22c55e", text: "Silero AI VAD detected your voice! You're good to join." };
-    return { icon: "⚠️", color: "#eab308", text: "AI is not detecting voice. If you are speaking, try speaking louder or check your mic settings." };
+      return { icon: "✅", color: "#22c55e", text: t("mic.diagOk", "Silero AI VAD detected your voice! You're good to join.") };
+    return { icon: "⚠️", color: "#eab308", text: t("mic.diagWarn", "AI is not detecting voice. If you are speaking, try speaking louder or check your mic settings.") };
   };
 
   const diagnosis = diagnose();
@@ -134,25 +136,25 @@ export function MicTestModal({ onClose }) {
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
           <span style={{ fontSize: 20 }}>🎙</span>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#f1f5f9" }}>
-            Mic Check
+            {t("mic.title", "Mic Check")}
           </h2>
         </div>
         <p style={{ margin: "0 0 22px", fontSize: 13, color: "#64748b" }}>
-          Tests whether your mic is correctly routed to the AI and if the backend Silero VAD detects your speech.
+          {t("mic.desc", "Tests whether your mic is correctly routed to the AI and if the backend Silero VAD detects your speech.")}
         </p>
 
         {/* Action button */}
         {status === "idle" && (
           <button onClick={startMic} style={btnStyle("#0ea5e9", "#6366f1")}>
-            Start Mic Test
+            {t("mic.start", "Start Mic Test")}
           </button>
         )}
         {status === "requesting" && (
-          <p style={{ color: "#94a3b8", fontSize: 13 }}>⏳ Waiting for browser mic permission…</p>
+          <p style={{ color: "#94a3b8", fontSize: 13 }}>{t("mic.requesting", "⏳ Waiting for browser mic permission…")}</p>
         )}
         {status === "denied" && (
           <div style={alertStyle("#ef4444")}>
-            ❌ Mic access denied. Please allow microphone access in your browser and reload.
+            {t("mic.denied", "❌ Mic access denied. Please allow microphone access in your browser and reload.")}
           </div>
         )}
 
@@ -170,10 +172,10 @@ export function MicTestModal({ onClose }) {
               <span style={{ fontSize: 24 }}>{isVoiceDetected ? "🟢" : "🔴"}</span>
               <div style={{ display: "flex", flexDirection: "column" }}>
                 <span style={{ fontSize: 15, fontWeight: "600", color: isVoiceDetected ? "#86efac" : "#fca5a5" }}>
-                  {isVoiceDetected ? "Voice Detected" : "Listening..."}
+                  {isVoiceDetected ? t("mic.detected", "Voice Detected") : t("mic.listening", "Listening...")}
                 </span>
                 <span style={{ fontSize: 12, color: "#94a3b8" }}>
-                  {isVoiceDetected ? "Backend AI confirms speech" : "Waiting for human voice"}
+                  {isVoiceDetected ? t("mic.confirmed", "Backend AI confirms speech") : t("mic.waiting", "Waiting for human voice")}
                 </span>
               </div>
             </div>
@@ -195,7 +197,7 @@ export function MicTestModal({ onClose }) {
               onClick={() => { stopMic(); setStatus("idle"); }}
               style={btnStyle("#475569", "#334155")}
             >
-              Stop Test
+              {t("mic.stop", "Stop Test")}
             </button>
           </>
         )}

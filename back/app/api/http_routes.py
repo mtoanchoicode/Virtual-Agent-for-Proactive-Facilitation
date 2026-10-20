@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request
 
 from app.models.schemas import ChatRequest
 from app.core.room_manager import room
+from app.services import lang
 from app.services.llm_service import process_message
 from app.utils.helpers import audio_file_to_base64
 from app.core.config import OPENAI_API_KEY, client
@@ -35,6 +36,20 @@ async def set_mode(request: Request):
     await room.broadcast({"type": "mode_changed", "mode": new_mode})
     await room.broadcast_log(f"[room] Mode switched to: {new_mode.upper()}", "warning")
     return {"mode": room.mode}
+
+@router.get("/room/language")
+async def get_language():
+    return {"language": lang.get()}
+
+@router.post("/room/language")
+async def set_language(request: Request):
+    body = await request.json()
+    new_lang = body.get("language", "en")
+    if not lang.set_lang(new_lang):
+        return {"error": "Invalid language. Must be 'en' or 'vi'."}
+    await room.broadcast({"type": "language_changed", "language": new_lang})
+    await room.broadcast_log(f"[room] Language switched to: {new_lang.upper()}", "warning")
+    return {"language": lang.get()}
 
 @router.post("/chat")
 async def chat(request: ChatRequest):
