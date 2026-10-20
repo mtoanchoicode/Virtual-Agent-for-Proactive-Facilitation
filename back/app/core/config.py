@@ -22,4 +22,11 @@ NOISE_FLOOR_RMS = 0.008
 MIN_AUDIO_SECONDS = 0.4
 ROOM_SILENCE_THRESHOLD_MS = 1500  # was 5000 — reduced for faster response
 IMBALANCE_WORD_THRESHOLD = 50
-SUMMARY_TRIGGERS = ["summarize", "summarise", "wrap up", "recap"]
+# Speech-to-text. gpt-4o-transcribe is more accurate on accented speech than whisper-1
+# (falls back to whisper-1 automatically if the model errors). Set STT_MODEL=whisper-1 to revert.
+STT_MODEL = os.getenv("STT_MODEL", "gpt-4o-transcribe")
+# Silence needed after speech before a chunk is sent to STT. Longer = fewer split sentences.
+STT_CHUNK_SILENCE_SEC = float(os.getenv("STT_CHUNK_SILENCE_SEC", "1.1"))
+# Max time a turn waits for pending transcriptions before proceeding.
+STT_WAIT_SEC = float(os.getenv("STT_WAIT_SEC", "3.0"))
+SUMMARY_TRIGGERS =["summarize", "summarise", "wrap up", "recap"]

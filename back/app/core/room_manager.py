@@ -11,7 +11,10 @@ from typing import List, Optional, Dict, Set
 
 from fastapi import WebSocket
 
-from app.core.config import client, SAMPLE_RATE, ROOM_SILENCE_THRESHOLD_MS, IMBALANCE_WORD_THRESHOLD, SUMMARY_TRIGGERS
+from app.core.config import (
+    client, SAMPLE_RATE, ROOM_SILENCE_THRESHOLD_MS, IMBALANCE_WORD_THRESHOLD, SUMMARY_TRIGGERS,
+    STT_MODEL, STT_CHUNK_SILENCE_SEC, STT_WAIT_SEC,
+)
 from app.services.llm_service import shared_conv
 from app.services import scenario
 from app.services.audio_service import is_speech_present, whisper_model, stream_audio_chunks
@@ -122,6 +125,15 @@ class Participant:
         self.pending_tasks: Set[asyncio.Task] = set()
         self.last_speech_time: float = 0.0
         self.interruption_start_time: float = 0.0
+        # Bumped whenever STT state is reset, so transcripts that finish late are discarded.
+        self.stt_epoch: int = 0
+        self.last_text: str = ""  # tail of previous transcript, fed to STT as context
+
+    def reset_stt(self) -> None:
+        self.transcripts.clear()
+        self.chunk_index = 0
+        self.pending_tasks.clear()
+        self.stt_epoch += 1
 
     def to_dict(self) -> dict:
         return {
@@ -147,6 +159,7 @@ class Room:
         self._tts_tasks: Set[asyncio.Task] = set()
         self._turn_count: int = 0
         self.mode: str = "full"  # "full" or "lite"
+        self._stt_bad_models: Set[str] = set()
 
         # Scenario (e.g. Lost at Sea) clock and proactive-speech state
         self.scenario_started_at: float = 0.0
@@ -234,9 +247,7 @@ class Room:
             p.is_speaking = False
             for task in list(p.pending_tasks):
                 task.cancel()
-            p.pending_tasks.clear()
-            p.transcripts.clear()
-            p.chunk_index = 0
+            p.reset_stt()
             p.word_count = 0
         await self.broadcast({
             "type": "voice_session_ended",
@@ -318,7 +329,7 @@ class Room:
             chunk_length_sec = len(p.audio_chunks) / (SAMPLE_RATE * 2)
             time_since_speech = now - p.last_speech_time
 
-            if (time_since_speech > 0.5 and chunk_length_sec > 0.2) or chunk_length_sec > 15.0:
+            if (time_since_speech > STT_CHUNK_SILENCE_SEC and chunk_length_sec > 0.2) or chunk_length_sec > 15.0:
                 chunk_data = bytes(p.audio_chunks)
                 p.audio_chunks.clear()
                 
@@ -381,9 +392,7 @@ class Room:
                 for p in self._participants.values():
                     p.audio_chunks.clear()
                     p.is_speaking = False
-                    p.transcripts.clear()
-                    p.chunk_index = 0
-                    p.pending_tasks.clear()
+                    p.reset_stt()
 
     async def _transcribe_bg(self, p: Participant, chunk_data: bytes, chunk_idx: int) -> None:
         print(f"[room][{p.name}] starting bg transcription for chunk {chunk_idx} (size {len(chunk_data)})")
@@ -399,33 +408,55 @@ class Room:
         buf.seek(0)
         buf.name = "audio.wav"
 
+        epoch = p.stt_epoch
+        # Context for the recogniser: scenario vocabulary + the end of what this person said last.
+        # Short fragments transcribe much better with this.
+        prompt_parts = [scenario.STT_HINT] if scenario.ENABLED else []
+        if p.last_text:
+            prompt_parts.append(p.last_text)
+        stt_prompt = " ".join(prompt_parts) or None
+
         try:
             if whisper_model:
                 loop = asyncio.get_running_loop()
                 def do_transcribe():
                     buf.seek(0)
                     # beam_size=1 (greedy) is 3-5x faster than beam_size=5 with minimal accuracy loss
-                    hint = scenario.STT_HINT if scenario.ENABLED else None
-                    segments, info = whisper_model.transcribe(buf, beam_size=5, language="en", initial_prompt=hint)
+                    segments, info = whisper_model.transcribe(buf, beam_size=5, language="en", initial_prompt=stt_prompt)
                     return " ".join([segment.text for segment in segments])
                 text = await loop.run_in_executor(None, do_transcribe)
                 text = text.strip()
             else:
-                res = await client.audio.transcriptions.create(
-                    model="whisper-1", 
-                    file=buf,
-                    language="en",
-                    **({"prompt": scenario.STT_HINT} if scenario.ENABLED else {}),
-                )
-                text = res.text.strip()
-                
+                text = await self._transcribe_api(buf, stt_prompt)
+
             text = clean_transcript(text)
+            if epoch != p.stt_epoch:
+                print(f"[room][{p.name}] discarding late transcript: \"{text}\"")
+                return
             await self.broadcast_log(f"[transcript] {p.name}: \"{text}\"", "info")
             if text:
                 p.transcripts[chunk_idx] = text
+                p.last_text = text[-200:]
         except Exception as e:
             print(f"[room] background transcription error for {p.name}: {e}")
 
+
+    async def _transcribe_api(self, buf: io.BytesIO, stt_prompt: Optional[str]) -> str:
+        """Transcribe via the OpenAI API: STT_MODEL first, falling back to whisper-1 on error."""
+        models = [m for m in dict.fromkeys([STT_MODEL, "whisper-1"]) if m not in self._stt_bad_models]
+        last_err: Optional[Exception] = None
+        for model in models:
+            try:
+                buf.seek(0)
+                kwargs = {"prompt": stt_prompt} if stt_prompt else {}
+                res = await client.audio.transcriptions.create(model=model, file=buf, language="en", **kwargs)
+                return res.text.strip()
+            except Exception as e:
+                last_err = e
+                print(f"[room] STT model {model} failed: {e}")
+                if model != "whisper-1":
+                    self._stt_bad_models.add(model)  # don't retry a model that errors (e.g. no access)
+        raise last_err if last_err else RuntimeError("no STT model available")
 
     async def _process_and_broadcast(self, idx: int, text: str, timing: dict) -> None:
         """Stream TTS audio chunks to all clients as edge-tts yields them.
@@ -620,10 +651,10 @@ class Room:
             try:
                 await asyncio.wait_for(
                     asyncio.gather(*all_tasks, return_exceptions=True),
-                    timeout=1.5,
+                    timeout=STT_WAIT_SEC,
                 )
             except asyncio.TimeoutError:
-                print("[room][lite] STT tasks timed out after 1.5s")
+                print("[room][lite] STT tasks timed out")
 
         timing["t_stt_done"] = time.time()
 
@@ -633,9 +664,7 @@ class Room:
             text = " ".join(sorted_texts).strip()
             if text:
                 transcripts.append({"speaker": p.name, "text": text})
-            p.transcripts.clear()
-            p.chunk_index = 0
-            p.pending_tasks.clear()
+            p.reset_stt()
 
         if not transcripts:
             print("[room][lite] no transcribable audio — skipping")
@@ -755,11 +784,11 @@ class Room:
             try:
                 await asyncio.wait_for(
                     asyncio.gather(*all_tasks, return_exceptions=True),
-                    timeout=1.5,  # reduced from 3s — proceed with available transcripts sooner
+                    timeout=STT_WAIT_SEC,
                 )
                 print("[room] all background tasks completed")
             except asyncio.TimeoutError:
-                print("[room] STT tasks timed out after 1.5s — proceeding with available transcripts")
+                print("[room] STT tasks timed out — proceeding with available transcripts")
 
         timing["t_stt_done"] = time.time()
 
@@ -771,9 +800,7 @@ class Room:
                 transcripts.append({"speaker": p.name, "text": text})
                 # Add word count (split by spaces)
                 p.word_count += len(text.split())
-            p.transcripts.clear()
-            p.chunk_index = 0
-            p.pending_tasks.clear()
+            p.reset_stt()
 
         has_transcripts = len(transcripts) > 0
 

@@ -7,39 +7,33 @@ import aiofiles
 # ---------------------------------------------------------------------------
 # Transcript cleanup
 # ---------------------------------------------------------------------------
-# Whisper sometimes hallucinates when a non-native speaker reads English aloud.
-# Common artefacts: repeated words ("and and and and"), filler runs ("yeah yeah yeah"),
-# and garbled endings ("bye bye bye nice work nice work").
-# This cleaner makes the transcript readable before it is sent to the LLM.
+# Speech-to-text sometimes hallucinates on noise or silence, or loops on a word
+# ("and and and and"). This cleaner removes those artefacts but deliberately KEEPS short
+# real answers such as "yes", "okay" or "yeah" - they are agreements the facilitator needs.
 
-_FILLER_WORDS = {
-    "yeah", "yes", "okay", "ok", "um", "uh", "hmm", "ah",
-    "bye", "hi", "hello", "thanks", "nice", "work",
+# Phrases STT commonly invents from silence/noise. Dropped only when they are the whole transcript.
+_HALLUCINATIONS = {
+    "thanks for watching", "thank you for watching", "please subscribe",
+    "subtitles by the amara.org community", "bye", "bye bye",
 }
 
 def clean_transcript(text: str) -> str:
-    """Remove consecutive duplicate words and collapse filler-word runs."""
+    """Collapse looping repeated words and drop known whole-transcript hallucinations."""
     if not text:
         return text
 
-    # Step 1: collapse runs of the SAME word (case-insensitive), keep one copy.
-    # e.g. "and and and" → "and", "bye bye bye" → "bye"
+    # Collapse runs of the SAME word repeated 3+ times (case-insensitive) into one copy.
+    # "and and and and" -> "and". Two repeats ("very very", "had had") are kept as real speech.
     text = re.sub(
-        r'\b(\w+)(?:\s+\1)+\b',
+        r'\b(\w+)(?:\s+\1){2,}\b',
         r'\1',
         text,
         flags=re.IGNORECASE,
     )
 
-    # Step 2: remove isolated filler words that appear at the end of the sentence
-    # after the main content, e.g. "…original. nice work nice work" → "…original."
-    words = text.split()
-    # Walk from the end and strip trailing filler runs
-    while words and words[-1].lower().rstrip('.,!?') in _FILLER_WORDS:
-        words.pop()
-
-    # Step 3: strip leftover ellipsis / dots artefacts
-    cleaned = " ".join(words).strip(" .,")
+    cleaned = " ".join(text.split()).strip()
+    if cleaned.lower().strip(" .,!?") in _HALLUCINATIONS:
+        return ""
     return cleaned
 
 async def exec_command(command: str):

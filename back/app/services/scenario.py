@@ -33,9 +33,11 @@ ITEMS = [
 
 # Vocabulary hint for speech-to-text (helps with words like "sextant").
 STT_HINT = (
-    "Lost at Sea ranking. Items: sextant, shaving mirror, mosquito netting, water container, "
-    "army rations, maps of the Pacific, floating seat cushion, oil petrol mixture, transistor radio, "
-    "plastic sheeting, shark repellent, rubbing alcohol, nylon rope, chocolate bars, fishing kit."
+    "Two crew members in a life raft in the South Pacific ranking survival items. Items: sextant "
+    "(navigation instrument), shaving mirror, mosquito netting, 25 liter container of water, "
+    "case of army rations, maps of the Pacific Ocean, floating seat cushion, oil petrol mixture, "
+    "transistor radio, opaque plastic sheeting, shark repellent, rubbing alcohol, nylon rope, "
+    "chocolate bars, fishing kit and pole. Ranking numbers one to fifteen."
 )
 
 SCENARIO_BRIEF = (
