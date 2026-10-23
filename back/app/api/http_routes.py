@@ -37,6 +37,22 @@ async def set_mode(request: Request):
     await room.broadcast_log(f"[room] Mode switched to: {new_mode.upper()}", "warning")
     return {"mode": room.mode}
 
+@router.get("/room/time-limit")
+async def get_time_limit():
+    return room.session_timer()
+
+@router.post("/room/time-limit")
+async def set_time_limit(request: Request):
+    body = await request.json()
+    try:
+        minutes = int(body.get("minutes"))
+    except (TypeError, ValueError):
+        return {"error": "minutes must be an integer between 1 and 20."}
+    if not 1 <= minutes <= 20:
+        return {"error": "minutes must be an integer between 1 and 20."}
+    await room.set_time_limit(minutes)
+    return room.session_timer()
+
 @router.get("/room/language")
 async def get_language():
     return {"language": lang.get()}

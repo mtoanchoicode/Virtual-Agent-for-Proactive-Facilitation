@@ -152,6 +152,7 @@ class Room:
         self._participants: Dict[str, Participant] = {}
         self._lock = asyncio.Lock()
         self.voice_session_active: bool = False
+        self.voice_session_started_at: float = 0.0  # when Start was clicked (drives the on-screen countdown)
         self._turn_active: bool = False
         self._silence_timer: Optional[asyncio.TimerHandle] = None
         self._turn_lock = asyncio.Lock()  # Serialises entry into _on_room_silence
@@ -168,8 +169,24 @@ class Room:
         self.scenario_started_at: float = 0.0
         self._scenario_task: Optional[asyncio.Task] = None
         self._last_activity: float = 0.0   # last time anyone (user or AI) spoke
-        self._checkpoints_done: Set[int] = set()
+        self._checkpoints_done: Set[float] = set()  # fractions of the limit already announced
         self._wrapped_up: bool = False
+
+    def session_timer(self) -> dict:
+        """Countdown info for the UI: seconds elapsed since Start was clicked, and the total limit."""
+        elapsed = time.time() - self.voice_session_started_at if self.voice_session_started_at else 0.0
+        return {"elapsedSec": elapsed, "timeLimitSec": scenario.TIME_LIMIT_SEC}
+
+    async def set_time_limit(self, minutes: int) -> int:
+        """Change the session length for the whole room, even mid-session. Time checks, wrap-up and
+        nudge timing all read the limit live, so they adapt immediately."""
+        sec = scenario.set_time_limit(int(minutes) * 60)
+        # Extended after the wrap-up already fired: allow the wrap-up to happen again at the new end.
+        if self.scenario_started_at and self.scenario_elapsed() < sec:
+            self._wrapped_up = False
+        await self.broadcast({"type": "time_limit_changed", **self.session_timer()})
+        await self.broadcast_log(f"[room] Session length set to {sec // 60} min", "warning")
+        return sec
 
     def scenario_elapsed(self) -> float:
         return time.time() - self.scenario_started_at if self.scenario_started_at else 0.0
@@ -262,9 +279,11 @@ class Room:
         if self.voice_session_active:
             return
         self.voice_session_active = True
+        self.voice_session_started_at = time.time()
         await self.broadcast({
             "type": "voice_session_started",
             "participants": self.participant_list(),
+            **self.session_timer(),
         })
         await self.broadcast_log("[room] Voice session started", "success")
         if scenario.ENABLED:
@@ -274,6 +293,7 @@ class Room:
         if not self.voice_session_active:
             return
         self.voice_session_active = False
+        self.voice_session_started_at = 0.0
         if self._scenario_task and not self._scenario_task.done():
             self._scenario_task.cancel()
         self._scenario_task = None
@@ -575,14 +595,14 @@ class Room:
                     await self._run_proactive("WRAP_UP")
                     continue
 
-                due = [c for c in scenario.TIME_CHECKPOINTS_SEC if elapsed >= c and c not in self._checkpoints_done]
+                due = [f for f, c in scenario.checkpoints() if elapsed >= c and f not in self._checkpoints_done]
                 if due and not self._wrapped_up:
                     # Only the latest due checkpoint is spoken; earlier missed ones are skipped.
                     self._checkpoints_done.update(due)
                     await self._run_proactive("TIME_CHECK")
                     continue
 
-                if not self._wrapped_up and now - self._last_activity >= scenario.SILENCE_NUDGE_SEC:
+                if not self._wrapped_up and now - self._last_activity >= scenario.nudge_sec():
                     await self._run_proactive("NUDGE")
         except asyncio.CancelledError:
             pass

@@ -74,6 +74,7 @@ async def voice_ws(websocket: WebSocket):
                         "participant": participant.to_dict(),
                         "participants": room.participant_list(),
                         "voiceSessionActive": room.voice_session_active,
+                        **room.session_timer(),
                     })
 
                     await room.broadcast(

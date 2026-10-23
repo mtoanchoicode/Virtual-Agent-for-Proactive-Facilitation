@@ -1,5 +1,5 @@
 // front/src/components/UI.jsx
-import { useRef } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useChat } from "../hooks/useChat";
 import { useT } from "../i18n";
 
@@ -18,6 +18,68 @@ const ROOM_STATE_STYLES = {
     key: "ui.avatarSpeaking",
   },
 };
+
+// ── Session timer: always visible. Idle = total length; running = countdown (resets on stop).
+// Hover to reveal −/+ (1–20 min); the new length applies to the whole room immediately.
+function SessionTimer({ limitSec, startedAt, onChangeMinutes }) {
+  const t = useT();
+  const running = startedAt != null;
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!running) return;
+    const id = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(id);
+  }, [running]);
+  const remaining = running
+    ? Math.max(0, Math.ceil((limitSec * 1000 - (now - startedAt)) / 1000))
+    : limitSec;
+  const mm = String(Math.floor(remaining / 60)).padStart(2, "0");
+  const ss = String(remaining % 60).padStart(2, "0");
+  const minutes = Math.round(limitSec / 60);
+  const color = !running ? "#cbd5e1" : remaining === 0 ? "#f87171" : remaining <= 120 ? "#fbbf24" : "#e2e8f0";
+  const stepBtn = (disabled) => ({
+    width: 22, height: 22, borderRadius: "50%", lineHeight: "20px", fontSize: 15, fontWeight: 700,
+    color: "#e2e8f0", background: "rgba(148,163,184,0.18)", border: "1px solid rgba(148,163,184,0.3)",
+    cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.35 : 1,
+  });
+  return (
+    <div
+      className="group pointer-events-auto absolute left-1/2 top-3 -translate-x-1/2 flex items-center gap-2 rounded-full px-3 py-1.5 backdrop-blur-md"
+      style={{ background: "rgba(15,23,42,0.85)", border: `1px solid ${color}55` }}
+      title={t("ui.timerHint", "Hover and use − / + to set the session length (1–20 min)")}
+    >
+      <button
+        type="button"
+        className="opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
+        style={stepBtn(minutes <= 1)}
+        disabled={minutes <= 1}
+        onClick={() => onChangeMinutes(minutes - 1)}
+        aria-label={t("ui.timerMinus", "Decrease session length")}
+      >
+        −
+      </button>
+      <span style={{ fontSize: 14 }}>⏱</span>
+      <span style={{ color, fontWeight: 700, fontSize: 18, fontVariantNumeric: "tabular-nums", letterSpacing: "0.05em" }}>
+        {mm}:{ss}
+      </span>
+      {running && remaining === 0 && (
+        <span style={{ color, fontSize: 11, fontWeight: 700, textTransform: "uppercase" }}>
+          {t("ui.timeUp", "Time's up")}
+        </span>
+      )}
+      <button
+        type="button"
+        className="opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
+        style={stepBtn(minutes >= 20)}
+        disabled={minutes >= 20}
+        onClick={() => onChangeMinutes(minutes + 1)}
+        aria-label={t("ui.timerPlus", "Increase session length")}
+      >
+        +
+      </button>
+    </div>
+  );
+}
 
 export const UI = ({ hidden, ...props }) => {
   const t = useT();
@@ -41,6 +103,9 @@ export const UI = ({ hidden, ...props }) => {
 
     // Voice session
     voiceSessionActive,
+    timeLimitSec,
+    sessionStartedAt,
+    setTimeLimitMinutes,
     localVoiceStreaming,
     startVoiceSession,
     stopVoiceSession,
@@ -68,6 +133,12 @@ export const UI = ({ hidden, ...props }) => {
 
   return (
     <div className="fixed top-0 left-0 right-0 bottom-0 z-10 flex justify-between p-4 flex-col pointer-events-none">
+      <SessionTimer
+        limitSec={timeLimitSec}
+        startedAt={voiceSessionActive ? sessionStartedAt : null}
+        onChangeMinutes={setTimeLimitMinutes}
+      />
+
       {/* ── Top-left: Transcript panel ─────────────────────────────────── */}
       <div className="self-start max-w-md backdrop-blur-md bg-slate-900 bg-opacity-70 p-4 rounded-lg text-white text-sm space-y-3">
         {/* Turn transcripts (all speakers) */}

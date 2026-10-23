@@ -202,7 +202,7 @@ class ConversationManager:
         instructions = {
             "OPEN": (
                 "The session is starting. Warmly welcome both participants, say in one or two short sentences that "
-                f"they have {scenario.TIME_LIMIT_SEC // 60} minutes to agree together on one ranking of the 15 items, "
+                f"they have {scenario.minutes_text()} to agree together on one ranking of the 15 items, "
                 "and invite them to start with whichever item feels most important."
             ),
             "NUDGE": (

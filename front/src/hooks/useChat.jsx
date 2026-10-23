@@ -64,6 +64,30 @@ export const ChatProvider = ({ children }) => {
   const [participants, setParticipants] = useState([]);
   const [micActive, setMicActive] = useState(true);
   const [voiceSessionActive, setVoiceSessionActive] = useState(false);
+  // Session timer: total length (shared, adjustable 1-20 min) and, while running, when it started (local ms).
+  const [timeLimitSec, setTimeLimitSec] = useState(720);
+  const [sessionStartedAt, setSessionStartedAt] = useState(null);
+
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/room/time-limit`)
+      .then((r) => r.json())
+      .then((data) => data.timeLimitSec && setTimeLimitSec(data.timeLimitSec))
+      .catch(() => { });
+  }, []);
+
+  const setTimeLimitMinutes = useCallback(async (minutes) => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/room/time-limit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ minutes }),
+      });
+      const data = await res.json();
+      if (data.timeLimitSec) setTimeLimitSec(data.timeLimitSec);
+    } catch (e) {
+      console.error("Failed to set time limit", e);
+    }
+  }, []);
   const [localVoiceStreaming, setLocalVoiceStreaming] = useState(false);
   const [participantEntropies, setParticipantEntropies] = useState({});
   const [facilitatorLogs, setFacilitatorLogs] = useState([]);
@@ -467,8 +491,10 @@ export const ChatProvider = ({ children }) => {
         case "joined":
           setSessionId(data.sessionId);
           setParticipants(data.participants);
+          if (data.timeLimitSec) setTimeLimitSec(data.timeLimitSec);
           if (data.voiceSessionActive) {
             setVoiceSessionActive(true);
+            setSessionStartedAt(Date.now() - (data.elapsedSec ?? 0) * 1000);
             setRoomState("idle");
           }
           break;
@@ -560,6 +586,10 @@ export const ChatProvider = ({ children }) => {
           setFacilitatorMode(data.mode);
           break;
 
+        case "time_limit_changed":
+          if (data.timeLimitSec) setTimeLimitSec(data.timeLimitSec);
+          break;
+
         case "language_changed":
           applyLanguage(data.language);
           break;
@@ -605,6 +635,8 @@ export const ChatProvider = ({ children }) => {
         // ── Voice session events ──────────────────────────────────────
         case "voice_session_started":
           setVoiceSessionActive(true);
+          if (data.timeLimitSec) setTimeLimitSec(data.timeLimitSec);
+          setSessionStartedAt(Date.now() - (data.elapsedSec ?? 0) * 1000);
           setParticipants(data.participants);
           setRoomState("idle");
           startAudioStreaming();
@@ -612,6 +644,7 @@ export const ChatProvider = ({ children }) => {
 
         case "voice_session_ended":
           setVoiceSessionActive(false);
+          setSessionStartedAt(null);
           setLocalVoiceStreaming(false);
           setRoomState("idle");
           stopAudioStreaming();
@@ -925,6 +958,9 @@ export const ChatProvider = ({ children }) => {
         updateEntropy,
         participantEntropies,
         voiceSessionActive,
+        timeLimitSec,
+        sessionStartedAt,
+        setTimeLimitMinutes,
         localVoiceStreaming,
         startVoiceSession,
         stopVoiceSession,
