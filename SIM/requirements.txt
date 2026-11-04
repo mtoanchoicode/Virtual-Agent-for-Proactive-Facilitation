@@ -1,0 +1,12 @@
+# Simulation sandbox (installed into the project's .venv)
+langgraph>=1.0
+openai>=1.40
+websockets>=13
+httpx
+edge-tts>=7
+miniaudio>=1.60
+numpy
+PyYAML
+python-dotenv
+# Optional: paired significance tests in analyze.py
+# scipy

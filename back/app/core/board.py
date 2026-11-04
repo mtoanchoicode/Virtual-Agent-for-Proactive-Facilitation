@@ -22,6 +22,7 @@ _AUTO_AGREE_NAMES = {"Simulator"}
 
 class Board:
     def __init__(self) -> None:
+        self.mode: str = "full"  # facilitator mode, recorded with every logged event
         self.reset()
 
     def reset(self) -> None:
@@ -48,6 +49,7 @@ class Board:
             "event": event,
             "by": who,
             "version": self.version,
+            "mode": self.mode,
             **data,
         }
         try:

@@ -1,0 +1,15 @@
+# 5 pairs x 2 conditions, 3-minute sessions.
+name: pilot5
+personas_file: personas.yaml
+output_dir: out
+backend_urls:
+  - http://127.0.0.1:3002
+  - http://127.0.0.1:3003
+  - http://127.0.0.1:3004
+agent_model: gpt-4o
+temperature: 0.8
+conditions: [full, lite]
+pairs: [balanced, dominant_p1, stubborn_quiet, dominant_p2, clash]
+seeds: [1]
+time_limit_min: 3
+grace_sec: 30

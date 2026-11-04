@@ -69,7 +69,8 @@ def minutes_text() -> str:
     return f"{m} minute" if m == 1 else f"{m} minutes"
 
 
-def _build_brief() -> str:
+def task_brief() -> str:
+    """Scenario and task only, with no facilitation guidance (used by Lite Mode)."""
     return (
     "SCENARIO: 'Lost at Sea'. Two participants are crew of a yacht that caught fire and is sinking in the "
     "South Pacific, about 1,000 miles from the nearest land. They are in a rubber life raft with oars. "
@@ -77,7 +78,13 @@ def _build_brief() -> str:
     + "; ".join(ITEMS)
     + ".\n"
     f"TASK: within {minutes_text()}, discuss and agree on ONE shared ranking of all 15 items, "
-    "1 = most important to survival, 15 = least important. Both must agree on every rank.\n"
+    "1 = most important to survival, 15 = least important. Both must agree on every rank."
+    )
+
+
+def _build_brief() -> str:
+    return (
+    task_brief() + "\n"
     "YOUR ROLE: you are a neutral facilitator. You do NOT know the correct ranking and must never claim, "
     "imply or hint at one. If asked for the answer, say you don't have it and that it is up to them. "
     "Never rank items for them and never say whether an item is more or less important. Help the PAIR "

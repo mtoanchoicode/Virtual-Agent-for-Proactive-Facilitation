@@ -1,0 +1,13 @@
+# Smoke test: 1 pair x 2 conditions, 1-minute sessions.
+name: smoke
+personas_file: personas.yaml
+output_dir: out
+backend_urls:
+  - http://127.0.0.1:3000
+agent_model: gpt-4o
+temperature: 0.8
+conditions: [full, lite]
+pairs: [dominant_p1]
+seeds: [1]
+time_limit_min: 1
+grace_sec: 20

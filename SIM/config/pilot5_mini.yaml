@@ -1,0 +1,15 @@
+# Same as pilot5, but the simulated participants use gpt-4o-mini.
+name: pilot5_mini
+personas_file: personas.yaml
+output_dir: out
+backend_urls:
+  - http://127.0.0.1:3002
+  - http://127.0.0.1:3003
+  - http://127.0.0.1:3004
+agent_model: gpt-4o-mini
+temperature: 0.8
+conditions: [full, lite]
+pairs: [balanced, dominant_p1, stubborn_quiet, dominant_p2, clash]
+seeds: [1]
+time_limit_min: 3
+grace_sec: 30

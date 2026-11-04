@@ -1,0 +1,125 @@
+# Simulated participants. Traits are 0..1 unless noted.
+#   talkativeness  how readily they take the floor
+#   verbosity      turn length (max words per turn = 12 + 38 * verbosity)
+#   assertiveness  how firmly they hold their role-card position
+#   agreeableness  tone (blunt .. warm)
+#   fillers        um/uh/like frequency
+#   reaction_sec   typical pause before taking the floor (lognormal around this)
+#   stuck_prob     chance per turn of a long 4-10 s hesitation (drives natural deadlocks)
+# Voices: any edge-tts voice (`edge-tts --list-voices`); avoid en-US-GuyNeural (the facilitator).
+personas:
+  maya:
+    name: Maya
+    voice: en-US-JennyNeural
+    tts_rate: "+5%"
+    demographics: {age_group: "18-24", gender: "Woman", english_first: "Yes"}
+    talkativeness: 0.85
+    verbosity: 0.75
+    assertiveness: 0.8
+    agreeableness: 0.35
+    fillers: 0.25
+    reaction_sec: 0.7
+    stuck_prob: 0.03
+    style: "Energetic and quick to jump in; likes to set the agenda."
+  daniel:
+    name: Daniel
+    voice: en-GB-RyanNeural
+    tts_rate: "-5%"
+    demographics: {age_group: "18-24", gender: "Man", english_first: "No"}
+    talkativeness: 0.3
+    verbosity: 0.35
+    assertiveness: 0.45
+    agreeableness: 0.75
+    fillers: 0.6
+    reaction_sec: 1.6
+    stuck_prob: 0.15
+    style: "Thoughtful but reserved; often waits for a gap and trails off when unsure."
+  priya:
+    name: Priya
+    voice: en-IN-NeerjaNeural
+    tts_rate: "+0%"
+    demographics: {age_group: "25-34", gender: "Woman", english_first: "No"}
+    talkativeness: 0.55
+    verbosity: 0.55
+    assertiveness: 0.6
+    agreeableness: 0.6
+    fillers: 0.3
+    reaction_sec: 1.0
+    stuck_prob: 0.06
+    style: "Methodical; likes to go item by item."
+  lucas:
+    name: Lucas
+    voice: en-US-ChristopherNeural
+    tts_rate: "+0%"
+    demographics: {age_group: "18-24", gender: "Man", english_first: "Yes"}
+    talkativeness: 0.55
+    verbosity: 0.5
+    assertiveness: 0.65
+    agreeableness: 0.5
+    fillers: 0.35
+    reaction_sec: 1.0
+    stuck_prob: 0.06
+    style: "Pragmatic and a little competitive."
+  sofia:
+    name: Sofia
+    voice: en-AU-NatashaNeural
+    tts_rate: "-5%"
+    demographics: {age_group: "18-24", gender: "Woman", english_first: "Yes"}
+    talkativeness: 0.35
+    verbosity: 0.4
+    assertiveness: 0.85
+    agreeableness: 0.4
+    fillers: 0.4
+    reaction_sec: 1.4
+    stuck_prob: 0.12
+    style: "Quiet but stubborn; rarely concedes a point once made."
+  omar:
+    name: Omar
+    voice: en-US-SteffanNeural  # en-US-AndrewNeural took 10-15 s per line under load (2026-11-02)
+    tts_rate: "+5%"
+    demographics: {age_group: "25-34", gender: "Man", english_first: "No"}
+    talkativeness: 0.8
+    verbosity: 0.65
+    assertiveness: 0.75
+    agreeableness: 0.3
+    fillers: 0.2
+    reaction_sec: 0.8
+    stuck_prob: 0.04
+    style: "Confident and blunt; tends to steer the conversation toward his own priorities."
+  hana:
+    name: Hana
+    voice: en-US-AvaNeural
+    tts_rate: "-5%"
+    demographics: {age_group: "18-24", gender: "Woman", english_first: "No"}
+    talkativeness: 0.25
+    verbosity: 0.3
+    assertiveness: 0.4
+    agreeableness: 0.8
+    fillers: 0.5
+    reaction_sec: 1.8
+    stuck_prob: 0.18
+    style: "Shy and accommodating; often answers briefly and waits to be asked."
+
+# Pairs: p1 always gets the Signaling card, p2 the Sustenance card.
+# familiarity answers survey Q4 ("Before today, how familiar were you with the other participant?").
+pairs:
+  balanced:
+    p1: lucas
+    p2: priya
+    familiarity: "Not at all"
+  dominant_p1:
+    p1: maya
+    p2: daniel
+    familiarity: "Not at all"
+  stubborn_quiet:
+    p1: sofia
+    p2: daniel
+    familiarity: "Slightly"
+  dominant_p2:
+    p1: hana
+    p2: omar
+    familiarity: "Not at all"
+  clash:
+    p1: maya
+    p2: omar
+    familiarity: "Slightly"

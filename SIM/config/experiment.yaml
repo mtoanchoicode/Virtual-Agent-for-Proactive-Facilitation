@@ -1,0 +1,19 @@
+# Full experiment. Total sessions = len(seeds) x len(pairs) x len(conditions).
+# Each session runs in real time (time_limit_min + up to grace_sec), one session per backend at a time.
+name: pilot
+personas_file: personas.yaml
+output_dir: out
+
+# One backend process per entry (each holds a single room). Start extra ones with run_backends.bat.
+backend_urls:
+  - http://127.0.0.1:3000
+
+agent_model: gpt-4o        # model for the simulated participants (decisions, ranking, survey)
+temperature: 0.8
+
+conditions: [full, lite]   # full = Condition A, lite = Condition B
+pairs: [balanced, dominant_p1, stubborn_quiet]
+seeds: [1, 2]
+
+time_limit_min: 12         # 1..20 (backend limit)
+grace_sec: 30              # after time is up: finish the board and press agree

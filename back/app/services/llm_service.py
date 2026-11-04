@@ -1,4 +1,5 @@
 import base64
+import re
 from typing import List
 from app.services.audio_service import generate_audio_bytes
 from app.services import scenario, lang
@@ -230,27 +231,27 @@ class ConversationManager:
 
     def get_lite_prompt(self) -> List[dict]:
         """
-        Build a simple, free-form facilitation prompt for Lite Mode.
-        No action structure — the LLM speaks naturally every turn.
+        Build the Lite Mode (baseline) prompt: a plain voice assistant that knows it is the
+        facilitator but has no action menu or intervention strategy. It replies every turn
+        to whatever was just said, like a ChatGPT voice chat.
         Strips any ACTION:/TEXT: formatting from history so the LLM
         doesn't mimic the Full Mode format.
         """
-        system_content = (
-            "You are Yacine, an AI meeting facilitator. "
-            "Your job is to keep the conversation flowing naturally and productively. "
-            "Listen to what the participants say and respond with a short, helpful facilitation comment. "
-            "Be concise — one or two sentences at most. "
-            "Speak in a warm, encouraging tone. "
-            "Do NOT use any special formatting or labels. Just speak naturally."
+        system_content = "You are Yacine, an AI facilitator for this session."
+        if scenario.ENABLED:
+            system_content += f"\n\n{scenario.task_brief()}"
+        system_content += (
+            "\n\nReply to what was just said. "
+            "Your reply is spoken aloud, so keep it short (one or two sentences) "
+            "and do not use any special formatting or labels."
         )
 
         # Clean assistant history entries: strip Full Mode ACTION:/TEXT: formatting
         clean_history = []
-        for entry in self.history[-14:]:
+        for entry in self.history[-PROMPT_HISTORY_LEN:]:
             if entry["role"] == "assistant":
                 content = entry["content"]
                 # Remove "ACTION: SOMETHING\nTEXT: " prefix if present
-                import re
                 content = re.sub(r"(?i)ACTION:\s*\S+\s*\n?TEXT:\s*", "", content).strip()
                 # Skip if the assistant chose NO_ACTION (empty after stripping)
                 if not content:

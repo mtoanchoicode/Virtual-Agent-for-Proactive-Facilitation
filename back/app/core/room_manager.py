@@ -581,7 +581,9 @@ class Room:
             self._checkpoints_done = set()
             self._wrapped_up = False
             await self.broadcast_log("[scenario] Both participants present — session clock started", "success")
-            await self._run_proactive("OPEN")
+            # Lite Mode is the no-facilitation baseline: it never speaks first.
+            if self.mode == "full":
+                await self._run_proactive("OPEN")
 
             while self.voice_session_active:
                 await asyncio.sleep(1)
