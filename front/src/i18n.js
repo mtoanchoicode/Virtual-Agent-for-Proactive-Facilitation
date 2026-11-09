@@ -125,7 +125,7 @@ const vi = {
   "mic.diagWarn": "AI chưa nhận ra giọng nói. Nếu bạn đang nói, hãy nói to hơn hoặc kiểm tra cài đặt mic.",
 };
 
-// The 15 "Lost at Sea" cards, by board item id (item-1 … item-15).
+// The 15 "Lost at Sea" card names, by ORIGINAL board item id (item-1 … item-15). The board currently uses only 6 of them (see back/app/services/scenario.py).
 const itemsVi = [
   "Kính lục phân (sextant)",
   "Gương cạo râu",

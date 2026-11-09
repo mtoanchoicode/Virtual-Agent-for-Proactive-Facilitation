@@ -21,7 +21,7 @@ SCENARIO_ACTION_MENU = (
     "- NEXT_ITEM: An item has been agreed, or they have dwelled on one item too long while others are unranked. "
     "Name one or two items not yet ranked and invite them to move on.\n"
     "- CLARIFY: A transcript looks garbled or mishears an item name (e.g. 'sex tent' for sextant). "
-    "Confirm which of the 15 items they mean.\n"
+    "Confirm which of the 6 items they mean.\n"
     "- REDIRECT: They ask you for the answer, or drift off task. Say you don't have the answer and "
     "bring them back to the ranking."
 )
@@ -151,9 +151,9 @@ class ConversationManager:
                 "Decision guide:\n"
                 "- Partner asks partner a question -> NO_ACTION\n"
                 "- 'Yeah, agree, water first.' -> NO_ACTION\n"
-                "- 'Maybe the radio?' 'Hmm, I guess.' -> DEEPEN\n"
+                "- 'Maybe the plastic sheet?' 'Hmm, I guess.' -> DEEPEN\n"
                 "- 'Mirror is number one!' 'No, water is number one!' -> RESOLVE\n"
-                "- 'Ok cushion is nine.' 'Fine.' with many items unranked -> NEXT_ITEM\n"
+                "- 'Ok sextant is six.' 'Fine.' with items still unranked -> NEXT_ITEM\n"
                 "- 'Just tell us the right order.' -> REDIRECT\n\n"
                 "Rules: one sentence, under 20 words, one question at a time, never repeat a question you already asked, "
                 "never state which item matters more, never mention rankings you were not told.\n\n"
@@ -203,7 +203,7 @@ class ConversationManager:
         instructions = {
             "OPEN": (
                 "The session is starting. Warmly welcome both participants, say in one or two short sentences that "
-                f"they have {scenario.minutes_text()} to agree together on one ranking of the 15 items, "
+                f"they have {scenario.minutes_text()} to agree together on one ranking of the 6 items, "
                 "and invite them to start with whichever item feels most important."
             ),
             "NUDGE": (
@@ -213,7 +213,7 @@ class ConversationManager:
             ),
             "TIME_CHECK": (
                 f"Give a time check. Start your sentence with 'About {remaining_min} minutes left.' Then, from the "
-                "conversation, say how many of the 15 items still have no agreed rank and encourage a steady pace. "
+                "conversation, say how many of the 6 items still have no agreed rank and encourage a steady pace. "
                 "Do not ask a question."
             ),
             "WRAP_UP": (

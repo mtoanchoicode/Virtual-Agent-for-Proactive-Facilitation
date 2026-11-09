@@ -8,7 +8,7 @@ import os
 SCENARIO = os.getenv("SCENARIO", "").strip().lower()
 ENABLED = SCENARIO == "lost_at_sea"
 
-TIME_LIMIT_SEC = int(os.getenv("SCENARIO_TIME_LIMIT_SEC", "720"))  # 12 minutes by default; adjustable at runtime
+TIME_LIMIT_SEC = int(os.getenv("SCENARIO_TIME_LIMIT_SEC", "300"))  # 5 minutes by default; adjustable at runtime
 MIN_TIME_LIMIT_SEC = 60
 MAX_TIME_LIMIT_SEC = 20 * 60
 SILENCE_NUDGE_SEC = float(os.getenv("SCENARIO_SILENCE_NUDGE_SEC", "20"))
@@ -32,36 +32,29 @@ def nudge_sec() -> float:
     """Silence before a nudge. Shorter sessions get a quicker nudge (never above the configured value)."""
     return min(SILENCE_NUDGE_SEC, max(8.0, TIME_LIMIT_SEC / 6))
 
-ITEMS = [
-    "Sextant",
-    "Shaving mirror",
-    "Mosquito netting",
-    "25 liter container of water",
-    "Case of army rations",
-    "Maps of the Pacific Ocean",
-    "Floating seat cushion",
-    "10 liter can of oil/petrol mixture",
-    "Small transistor radio",
-    "20 sq. ft. of opaque plastic sheeting",
-    "Can of shark repellent",
-    "One bottle of rubbing alcohol",
-    "15 ft. of nylon rope",
-    "2 boxes of chocolate bars",
-    "Ocean fishing kit and pole",
+# Reduced 6-item version of Lost at Sea (the 5 top-ranked Coast Guard items + the sextant as a
+# "navigation" trap). Ids are the ORIGINAL 15-item ids so the front end (emoji / Vietnamese labels) and
+# SIM/simlab/scoring.py stay in sync. Order here = fixed starting order of the board (deliberately not
+# the expert order).
+_SUBSET = [
+    ("item-5", "Case of army rations"),
+    ("item-1", "Sextant"),
+    ("item-8", "10 liter can of oil/petrol mixture"),
+    ("item-4", "25 liter container of water"),
+    ("item-10", "20 sq. ft. of opaque plastic sheeting"),
+    ("item-2", "Shaving mirror"),
 ]
+N_ITEMS = len(_SUBSET)
+ITEMS = [label for _, label in _SUBSET]
 
 # Cards for the shared ranking board: [{"id": "...", "label": "..."}], in the fixed starting order.
-BOARD_ITEMS = [
-    {"id": f"item-{i + 1}", "label": label} for i, label in enumerate(ITEMS)
-]
+BOARD_ITEMS = [{"id": i, "label": label} for i, label in _SUBSET]
 
 # Vocabulary hint for speech-to-text (helps with words like "sextant").
 STT_HINT = (
     "Two crew members in a life raft in the South Pacific ranking survival items. Items: sextant "
-    "(navigation instrument), shaving mirror, mosquito netting, 25 liter container of water, "
-    "case of army rations, maps of the Pacific Ocean, floating seat cushion, oil petrol mixture, "
-    "transistor radio, opaque plastic sheeting, shark repellent, rubbing alcohol, nylon rope, "
-    "chocolate bars, fishing kit and pole. Ranking numbers one to fifteen."
+    "(navigation instrument), shaving mirror, 25 liter container of water, "
+    "case of army rations, oil petrol mixture, opaque plastic sheeting. Ranking numbers one to six."
 )
 
 def minutes_text() -> str:
@@ -74,11 +67,11 @@ def task_brief() -> str:
     return (
     "SCENARIO: 'Lost at Sea'. Two participants are crew of a yacht that caught fire and is sinking in the "
     "South Pacific, about 1,000 miles from the nearest land. They are in a rubber life raft with oars. "
-    "Their pockets hold cigarettes, matches and five one-dollar bills. These 15 items survived:\n"
+    f"Their pockets hold cigarettes, matches and five one-dollar bills. These {N_ITEMS} items survived:\n"
     + "; ".join(ITEMS)
     + ".\n"
-    f"TASK: within {minutes_text()}, discuss and agree on ONE shared ranking of all 15 items, "
-    "1 = most important to survival, 15 = least important. Both must agree on every rank."
+    f"TASK: within {minutes_text()}, discuss and agree on ONE shared ranking of all {N_ITEMS} items, "
+    f"1 = most important to survival, {N_ITEMS} = least important. Both must agree on every rank."
     )
 
 
@@ -89,7 +82,7 @@ def _build_brief() -> str:
     "imply or hint at one. If asked for the answer, say you don't have it and that it is up to them. "
     "Never rank items for them and never say whether an item is more or less important. Help the PAIR "
     "reason better: ask about priorities (what threatens survival first, and over what time span), "
-    "surface disagreements, ask for the reasoning behind a pick, and keep them moving through all 15 items."
+    "surface disagreements, ask for the reasoning behind a pick, and keep them moving through all 6 items."
     )
 
 
@@ -108,33 +101,23 @@ def set_time_limit(sec: int) -> int:
 # Vietnamese (used only when the room language is "vi"; the English values above are untouched)
 # ---------------------------------------------------------------------------------------------
 ITEMS_VI = [
-    "Kính lục phân (sextant)",
-    "Gương cạo râu",
-    "Màn chống muỗi",
-    "Thùng nước 25 lít",
     "Một thùng lương khô quân đội",
-    "Bản đồ Thái Bình Dương",
-    "Phao cứu sinh",
+    "Kính lục phân (sextant)",
     "Can hỗn hợp dầu/xăng 10 lít",
-    "Radio bán dẫn nhỏ",
+    "Thùng nước 25 lít",
     "Tấm nhựa đục 20 feet vuông",
-    "Một lọ thuốc đuổi cá mập",
-    "Một chai cồn y tế",
-    "Dây nylon 15 feet",
-    "2 hộp sô-cô-la",
-    "Bộ cần câu cá biển",
+    "Gương cạo râu",
 ]
 
 STT_HINT_VI = (
     "Hai thuyền viên trên bè cứu sinh ở Nam Thái Bình Dương đang xếp hạng các vật dụng sinh tồn: "
-    "kính lục phân, gương cạo râu, màn chống muỗi, thùng nước 25 lít, lương khô quân đội, bản đồ Thái Bình Dương, "
-    "phao cứu sinh, hỗn hợp dầu xăng, radio, tấm nhựa đục, thuốc đuổi cá mập, cồn y tế, dây nylon, "
-    "sô-cô-la, bộ cần câu cá. Xếp hạng từ một đến mười lăm."
+    "kính lục phân, gương cạo râu, thùng nước 25 lít, lương khô quân đội, "
+    "hỗn hợp dầu xăng, tấm nhựa đục. Xếp hạng từ một đến sáu."
 )
 
 SCENARIO_BRIEF_VI = (
     "KỊCH BẢN (tiếng Việt): 'Lạc giữa biển'. Hai người tham gia là thuyền viên của một du thuyền bị cháy và đang chìm "
-    "ở Nam Thái Bình Dương. Họ đang ở trên một chiếc bè cứu sinh cao su có mái chèo. Danh sách 15 vật dụng còn lại:\n"
+    "ở Nam Thái Bình Dương. Họ đang ở trên một chiếc bè cứu sinh cao su có mái chèo. Danh sách 6 vật dụng còn lại:\n"
     + "; ".join(ITEMS_VI)
     + ". Khi nói chuyện hãy dùng tên tiếng Việt của các vật dụng này."
 )

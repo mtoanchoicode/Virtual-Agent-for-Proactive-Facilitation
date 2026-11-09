@@ -15,5 +15,5 @@ conditions: [full, lite]   # full = Condition A, lite = Condition B
 pairs: [balanced, dominant_p1, stubborn_quiet]
 seeds: [1, 2]
 
-time_limit_min: 12         # 1..20 (backend limit)
+time_limit_min: 4          # 1..20 (backend limit)
 grace_sec: 30              # after time is up: finish the board and press agree

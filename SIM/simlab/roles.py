@@ -15,8 +15,8 @@ ROLE_CARDS: Dict[str, str] = {
     "P2": (
         "Sustenance & First-Aid Specialist.\n"
         "Core philosophy: \"Signaling is useless if we don't survive long enough to be rescued. We may be out here for days.\"\n"
-        "- Strongly advocate for the 25 liter container of water, the Case of army rations and the One bottle of "
-        "rubbing alcohol as essential for staying alive and functional.\n"
+        "- Strongly advocate for the 25 liter container of water and the Case of army rations "
+        "as essential for staying alive and functional.\n"
         "- Question prioritizing signaling items too highly if it puts basic survival needs at risk.\n"
         "- Be methodical and focus on trade-offs. Do not agree to rank signaling items above basic survival "
         "needs without discussion."
@@ -29,10 +29,10 @@ def task_brief(minutes: int) -> str:
         "You are adrift on a private yacht in the South Pacific. A fire destroyed much of the yacht and it is "
         "slowly sinking. Navigation equipment was destroyed; your best estimate is that you are about 1,000 miles "
         "south-southwest of the nearest land. You and your partner have a rubber life raft with oars. Your pockets "
-        "hold a package of cigarettes, several books of matches and five one-dollar bills. These 15 items are intact:\n"
+        "hold a package of cigarettes, several books of matches and five one-dollar bills. These 6 items are intact:\n"
         + "\n".join(f"- {label}" for label in LABELS)
-        + f"\n\nWithin {minutes} minute(s), you and your partner must agree on ONE ranking of all 15 items by "
-        "importance to your survival (1 = most important, 15 = least). A shared ranking board on screen shows "
+        + f"\n\nWithin {minutes} minute(s), you and your partner must agree on ONE ranking of all 6 items by "
+        "importance to your survival (1 = most important, 6 = least). A shared ranking board on screen shows "
         "the current order; either of you can move cards. When you are both satisfied with the whole board, "
         "each of you presses \"I agree\"."
     )

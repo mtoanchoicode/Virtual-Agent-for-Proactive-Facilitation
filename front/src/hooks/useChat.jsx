@@ -65,7 +65,7 @@ export const ChatProvider = ({ children }) => {
   const [micActive, setMicActive] = useState(true);
   const [voiceSessionActive, setVoiceSessionActive] = useState(false);
   // Session timer: total length (shared, adjustable 1-20 min) and, while running, when it started (local ms).
-  const [timeLimitSec, setTimeLimitSec] = useState(720);
+  const [timeLimitSec, setTimeLimitSec] = useState(300);
   const [sessionStartedAt, setSessionStartedAt] = useState(null);
 
   useEffect(() => {

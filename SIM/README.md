@@ -51,6 +51,7 @@ Sessions run in real time: total wall time is about sessions x (time_limit + 1.5
 - `deadlocks`: silences of 4 s or more with neither participant speaking (protocol definition; time
   the facilitator is talking counts as silence). `deadlocks_nobody_speaking` also treats facilitator
   speech as breaking the silence. `deadlock_resolution_latency_sec` = gap end - (gap start + 4 s).
+- Task is the reduced 6-item Lost at Sea (rations, sextant, oil, water, plastic sheeting, mirror). Expert ranks are the Coast Guard order re-ranked 1-6 within the subset, so `final_score` runs 0-18 (bands in `simlab/scoring.py` are rescaled; the 15-item bands do not apply).
 - `final_score` = sum of |pair rank - expert rank|; `collaborative_improvement` = mean individual score - final score.
 - Survey: `helpfulness` = mean(Q4, Q5, Q7); `intrusiveness` = mean(Q8, Q9) on the raw scale (higher = more
   intrusive); `acceptance` = mean(Q4, Q5, Q7, 6-Q8, 6-Q9).

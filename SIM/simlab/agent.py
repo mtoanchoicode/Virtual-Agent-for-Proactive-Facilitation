@@ -214,7 +214,7 @@ class ParticipantAgent:
     async def rank_privately(self) -> dict:
         res = await self.llm.json(
             self.system,
-            "Before the discussion starts, privately write down your own ranking of all 15 items "
+            "Before the discussion starts, privately write down your own ranking of all 6 items "
             "(1 = most important). Base it on your role card and your own reasoning. List every item exactly once, "
             "using the exact item names.",
             "individual_ranking", RANKING_SCHEMA,
