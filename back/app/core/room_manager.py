@@ -18,9 +18,20 @@ from app.core.config import (
 from app.services.llm_service import shared_conv
 from app.services import scenario
 from app.core.board import Board
+from app.core.config import BASE_DIR
+from app.core.session_report import SessionRecorder
 from app.services import lang
 from app.services.audio_service import is_speech_present, whisper_model, stream_audio_chunks
 from app.utils.helpers import clean_transcript
+
+WELCOME_DIR = os.path.join(os.path.dirname(__file__), "..", "audios")
+# Captions for the stored clips; keep in sync with back/scripts/generate_welcome.py
+WELCOME_TEXT = {
+    "en": "Hello everyone, welcome! I'm Yacine, and I'll be facilitating your session. "
+          "Work together to agree on one ranking of the six items. Start with whichever feels most important to you.",
+    "vi": "Xin chào mọi người, chào mừng các bạn! Mình là Yacine, người điều phối buổi thảo luận hôm nay. "
+          "Hãy cùng nhau thống nhất một bảng xếp hạng cho sáu món đồ. Các bạn có thể bắt đầu với món nào quan trọng nhất.",
+}
 
 def extract_messages_from_json(json_string: str) -> List[dict]:
     messages = []
@@ -164,6 +175,7 @@ class Room:
         self.mode: str = "full"  # "full" or "lite"
         self._stt_bad_models: Set[str] = set()
         self.board = Board()  # shared ranking board; never shown to the facilitator LLM
+        self.recorder = SessionRecorder()  # transcript + metrics for the end-of-session report
 
         # Scenario (e.g. Lost at Sea) clock and proactive-speech state
         self.scenario_started_at: float = 0.0
@@ -280,18 +292,76 @@ class Room:
             return
         self.voice_session_active = True
         self.voice_session_started_at = time.time()
+        self.recorder.start(self.mode, lang.get(), scenario.TIME_LIMIT_SEC, self._turn_count)
+        self.board.events.clear()
         await self.broadcast({
             "type": "voice_session_started",
             "participants": self.participant_list(),
             **self.session_timer(),
         })
         await self.broadcast_log("[room] Voice session started", "success")
+        # Full mode: the facilitator greets immediately with a pre-recorded clip (no LLM / TTS round trip).
+        if self.mode == "full":
+            asyncio.create_task(self._play_welcome())
         if scenario.ENABLED:
             self._scenario_task = asyncio.create_task(self._scenario_loop())
 
-    async def deactivate_voice_session(self) -> None:
+    async def _play_welcome(self) -> None:
+        """Broadcast the stored welcome clip (app/audios/welcome_<lang>.mp3) through the normal audio stream."""
+        path = os.path.join(WELCOME_DIR, f"welcome_{lang.get()}.mp3")
+        try:
+            with open(path, "rb") as f:
+                raw = f.read()
+            encoded = base64.b64encode(raw).decode("utf-8")
+        except OSError as e:
+            print(f"[room] welcome clip missing ({path}): {e}")
+            return
+        self._turn_count += 1
+        msg_id = f"{self._turn_count}_0"
+        shared_conv.add_ai_response("OPEN", WELCOME_TEXT.get(lang.get(), ""))  # so the LLM knows it already greeted
+        self._last_activity = time.time()
+        await self.broadcast({"type": "facilitator_action", "action": "OPEN"})
+        await self.broadcast({
+            "type": "audio_stream_start", "msgId": msg_id, "text": WELCOME_TEXT.get(lang.get(), ""), "idx": 0,
+        })
+        await self.broadcast({"type": "audio_stream_chunk", "msgId": msg_id, "data": encoded})
+        await self.broadcast({"type": "audio_stream_end", "msgId": msg_id})
+        self.recorder.add_facilitator_utterance(WELCOME_TEXT.get(lang.get(), ""), "OPEN", self._turn_count, len(raw))
+        # The participants' task starts once the greeting has finished playing.
+        self.recorder.set_task_start(self.recorder.facilitator_until)
+        self._last_activity = self.recorder.facilitator_until  # don't nudge about silence while it plays
+
+    def _build_report(self, end_reason: str) -> Optional[dict]:
+        if not self.recorder.active:
+            return None
+        self.recorder.active = False
+        try:
+            report = self.recorder.build(
+                end_reason=end_reason,
+                participants=[p.name for p in self._participants.values()],
+                board_data=self.board.snapshot(self._participants) if scenario.ENABLED else None,
+                turn_count=self._turn_count,
+                board_events=list(self.board.events),
+            )
+        except Exception:
+            import traceback; traceback.print_exc()
+            return None
+        if os.environ.get("ENABLE_FILE_LOGGING", "true").lower() == "true":
+            try:
+                out_dir = os.path.join(BASE_DIR, "..", "reports")
+                os.makedirs(out_dir, exist_ok=True)
+                stamp = report["meta"]["startedAt"].replace(":", "").replace("-", "")[:15]
+                with open(os.path.join(out_dir, f"session_{stamp}_{report['meta']['sessionId']}.json"),
+                          "w", encoding="utf-8") as f:
+                    json.dump(report, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                print(f"[room] failed to save session report: {e}")
+        return report
+
+    async def deactivate_voice_session(self, reason: str = "stopped") -> None:
         if not self.voice_session_active:
             return
+        report = self._build_report(reason)
         self.voice_session_active = False
         self.voice_session_started_at = 0.0
         if self._scenario_task and not self._scenario_task.done():
@@ -310,6 +380,7 @@ class Room:
         await self.broadcast({
             "type": "voice_session_ended",
             "participants": self.participant_list(),
+            "report": report,
         })
         await self.broadcast_log("[room] Voice session ended", "info")
 
@@ -324,6 +395,7 @@ class Room:
         if speaking:
             p.last_speech_time = now
             self._last_activity = now
+            self.recorder.add_speech(p.name, now, len(pcm_bytes) / (SAMPLE_RATE * 2))
 
         if self._processing:
             # Smooth the speaking signal: if they spoke within the last 500ms, consider it a continuous burst
@@ -348,8 +420,10 @@ class Room:
                         self._tts_tasks.clear()
                         
                         self._processing = False
+                        self.recorder.busy_end(now)
                         self._turn_active = True
-                        
+                        self.recorder.interruptions += 1
+
                         await self.broadcast({
                             "type": "turn_interrupted",
                             "participants": self.participant_list(),
@@ -433,6 +507,8 @@ class Room:
 
             self._turn_active = False
             self._processing = True
+            # Participants stopped talking ~ROOM_SILENCE_THRESHOLD_MS before this; they're now waiting for the agent.
+            self.recorder.busy_start(t_silence - ROOM_SILENCE_THRESHOLD_MS / 1000.0)
 
         self._interrupted = False
         await self.broadcast({"type": "turn_processing"})
@@ -447,6 +523,7 @@ class Room:
             self._current_turn_task = None
             if not self._interrupted:
                 self._processing = False
+                self.recorder.busy_end()
                 for p in self._participants.values():
                     p.audio_chunks.clear()
                     p.is_speaking = False
@@ -454,6 +531,12 @@ class Room:
 
     async def _transcribe_bg(self, p: Participant, chunk_data: bytes, chunk_idx: int) -> None:
         print(f"[room][{p.name}] starting bg transcription for chunk {chunk_idx} (size {len(chunk_data)})")
+        # Approximate when this chunk was spoken: the buffer started at speech onset and ends "now"
+        # (minus the trailing silence that triggered the dispatch).
+        t_now = time.time()
+        t_start = t_now - len(chunk_data) / (SAMPLE_RATE * 2)
+        t_end = p.last_speech_time + 0.2 if p.last_speech_time > t_start else t_now
+        t_end = min(t_now, max(t_start, t_end))
         if not is_speech_present(chunk_data):
             return
 
@@ -495,6 +578,7 @@ class Room:
             if text:
                 p.transcripts[chunk_idx] = text
                 p.last_text = text[-200:]
+                self.recorder.add_participant_utterance(p.name, text, t_start, t_end)
         except Exception as e:
             print(f"[room] background transcription error for {p.name}: {e}")
 
@@ -519,6 +603,7 @@ class Room:
     async def _process_and_broadcast(self, idx: int, text: str, timing: dict) -> None:
         """Stream TTS audio chunks to all clients as edge-tts yields them.
         Runs as a background task so sentence N+1 can stream while N plays."""
+        audio_bytes = 0
         try:
             if idx == 0:
                 timing["t_tts_start"] = time.time()
@@ -535,6 +620,7 @@ class Room:
 
             chunk_count = 0
             async for audio_chunk in stream_audio_chunks(text):
+                audio_bytes += len(audio_chunk)
                 encoded = base64.b64encode(audio_chunk).decode("utf-8")
                 await self.broadcast({
                     "type": "audio_stream_chunk",
@@ -550,6 +636,7 @@ class Room:
                 "type": "audio_stream_end",
                 "msgId": msg_id,
             })
+            self.recorder.add_facilitator_utterance(text, timing.get("action"), timing.get("turn_n"), audio_bytes)
 
             # Count the facilitator's own speech as activity (approx. playback time)
             self._last_activity = max(self._last_activity, time.time() + len(text.split()) * 0.4)
@@ -562,6 +649,9 @@ class Room:
                 _write_timing_log(timing)
         except asyncio.CancelledError:
             print(f"[room] TTS stream {idx} was cancelled due to interruption.")
+            if audio_bytes:  # cut off mid-way; nothing was heard if no audio had been produced yet
+                self.recorder.add_facilitator_utterance(text, timing.get("action"), timing.get("turn_n"),
+                                                        audio_bytes, interrupted=True)
             raise
         except Exception as e:
             import traceback; traceback.print_exc()
@@ -581,27 +671,27 @@ class Room:
             self._checkpoints_done = set()
             self._wrapped_up = False
             await self.broadcast_log("[scenario] Both participants present — session clock started", "success")
-            # Lite Mode is the no-facilitation baseline: it never speaks first.
-            if self.mode == "full":
-                await self._run_proactive("OPEN")
-
+            # (The kickoff greeting is the pre-recorded welcome clip played in activate_voice_session.)
             while self.voice_session_active:
                 await asyncio.sleep(1)
-                if self.mode != "full" or self._processing or self._turn_active:
-                    continue
                 now = time.time()
                 elapsed = now - self.scenario_started_at
+                busy = self._processing or self._turn_active
 
                 if elapsed >= scenario.TIME_LIMIT_SEC and not self._wrapped_up:
+                    # Let an ongoing turn finish (up to 15 s), then wrap up and end the session.
+                    if busy and elapsed < scenario.TIME_LIMIT_SEC + 15:
+                        continue
                     self._wrapped_up = True
-                    await self._run_proactive("WRAP_UP")
-                    continue
+                    if self.mode == "full":
+                        await self._run_proactive("WRAP_UP")
+                        # Let the closing line finish playing before the summary appears.
+                        await asyncio.sleep(min(20.0, max(0.0, self.recorder.facilitator_until - time.time())) + 1.0)
+                    # Separate task: deactivate cancels this loop's task.
+                    asyncio.create_task(self.deactivate_voice_session("time_up"))
+                    return
 
-                due = [f for f, c in scenario.checkpoints() if elapsed >= c and f not in self._checkpoints_done]
-                if due and not self._wrapped_up:
-                    # Only the latest due checkpoint is spoken; earlier missed ones are skipped.
-                    self._checkpoints_done.update(due)
-                    await self._run_proactive("TIME_CHECK")
+                if self.mode != "full" or busy:
                     continue
 
                 if not self._wrapped_up and now - self._last_activity >= scenario.nudge_sec():
@@ -617,6 +707,7 @@ class Room:
             if self._processing or self._turn_active:
                 return
             self._processing = True
+        self.recorder.busy_start(time.time())
         self._interrupted = False
         try:
             self._current_turn_task = asyncio.create_task(self._proactive_turn(kind))
@@ -627,6 +718,7 @@ class Room:
             self._current_turn_task = None
             if not self._interrupted:
                 self._processing = False
+                self.recorder.busy_end()
             # Don't re-fire immediately after speaking (or being cut off)
             self._last_activity = max(self._last_activity, time.time())
 
@@ -955,6 +1047,7 @@ class Room:
                         action_match = re.search(r"(?i)ACTION:\s*([a-zA-Z_]+)", buffer)
                         action = action_match.group(1).upper() if action_match else "UNKNOWN"
                         timing["t_action_found"] = time.time()
+                        timing["action"] = action
                         await self.broadcast_log(f"[room] AI action decided: {action}", "success" if action != "NO_ACTION" else "info")
                         await self.broadcast({"type": "facilitator_action", "action": action})
                         action_found = True
@@ -998,6 +1091,7 @@ class Room:
             if action == "NO_ACTION":
                 await self.broadcast_log("[room] AI chose NO_ACTION — silent", "info")
                 shared_conv.add_ai_response(action, "(remains silent)")
+                self.recorder.silent_turns += 1
                 await self.broadcast({"type": "turn_skipped"})
                 return
 

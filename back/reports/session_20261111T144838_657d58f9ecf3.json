@@ -1,0 +1,168 @@
+{
+  "meta": {
+    "sessionId": "657d58f9ecf3",
+    "startedAt": "2026-11-11T14:48:38.623Z",
+    "endedAt": "2026-11-11T14:49:18.854Z",
+    "durationSec": 40.2,
+    "timeLimitSec": 300,
+    "endReason": "stopped",
+    "mode": "full",
+    "language": "en",
+    "participants": [
+      "Jimmy",
+      "Simulator"
+    ]
+  },
+  "summary": {
+    "conversationTurns": 3,
+    "participantUtterances": {
+      "Jimmy": 1,
+      "Simulator": 1
+    },
+    "participantWords": {
+      "Jimmy": 6,
+      "Simulator": 14
+    },
+    "participantSpeakingSec": {
+      "Jimmy": 0.6,
+      "Simulator": 3.1
+    },
+    "facilitatorUtterances": 3,
+    "facilitatorWords": 76,
+    "facilitatorSpeakingSecEstimate": 30.2,
+    "facilitatorActions": {
+      "OPEN": 1,
+      "REDIRECT": 2
+    },
+    "facilitatorSilentTurns": 0,
+    "interruptionsOfFacilitator": 0,
+    "boardMoves": 0,
+    "boardMovesBy": {}
+  },
+  "metrics": {
+    "conversationalBalance": {
+      "words": {
+        "Jimmy": 6,
+        "Simulator": 14
+      },
+      "D": 0.4,
+      "note": "D = |W1 - W2| / (W1 + W2); 0 = perfectly balanced, 1 = one person did all the talking."
+    },
+    "deadlocks": {
+      "thresholdSec": 4.0,
+      "definition": "Whole room silent >= 4 s: no participant speaking and the agent neither speaking nor preparing a reply.",
+      "count": 0,
+      "totalSilenceSec": 0,
+      "countParticipantsSilentOnly": 2,
+      "windowStartT": 14.2,
+      "items": []
+    },
+    "finalRanking": {
+      "ranking": [
+        {
+          "rank": 1,
+          "itemId": "item-2",
+          "item": "Shaving mirror",
+          "expertRank": 1,
+          "deviation": 0
+        },
+        {
+          "rank": 2,
+          "itemId": "item-5",
+          "item": "Case of army rations",
+          "expertRank": 4,
+          "deviation": 2
+        },
+        {
+          "rank": 3,
+          "itemId": "item-1",
+          "item": "Sextant",
+          "expertRank": 6,
+          "deviation": 3
+        },
+        {
+          "rank": 4,
+          "itemId": "item-8",
+          "item": "10 liter can of oil/petrol mixture",
+          "expertRank": 2,
+          "deviation": 2
+        },
+        {
+          "rank": 5,
+          "itemId": "item-4",
+          "item": "25 liter container of water",
+          "expertRank": 3,
+          "deviation": 2
+        },
+        {
+          "rank": 6,
+          "itemId": "item-10",
+          "item": "20 sq. ft. of opaque plastic sheeting",
+          "expertRank": 5,
+          "deviation": 1
+        }
+      ],
+      "score": 10,
+      "maxScore": 18,
+      "bothAgreed": false,
+      "note": "Score = sum over items of |pair rank - Coast Guard rank|; 0 = identical to the reference."
+    }
+  },
+  "boardEvents": [],
+  "transcript": [
+    {
+      "t": 0.0,
+      "ts": "2026-11-11T14:48:38.634Z",
+      "endT": 14.2,
+      "role": "facilitator",
+      "speaker": "Yacine",
+      "text": "Hello everyone, welcome! I'm Yacine, and I'll be facilitating your session. Work together to agree on one ranking of the six items. Start with whichever feels most important to you.",
+      "words": 30,
+      "action": "OPEN",
+      "interrupted": false,
+      "estDurationSec": 14.2
+    },
+    {
+      "t": 14.1,
+      "ts": "2026-11-11T14:48:52.701Z",
+      "endT": 17.2,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "Yes, I think we're done now.",
+      "words": 6
+    },
+    {
+      "t": 23.8,
+      "ts": "2026-11-11T14:49:02.471Z",
+      "endT": 31.7,
+      "role": "facilitator",
+      "speaker": "Yacine",
+      "text": "I don't have the answer for you, but let's focus on finalizing your rankings. What's the next item you'd like to discuss?",
+      "words": 22,
+      "action": "REDIRECT",
+      "interrupted": false,
+      "estDurationSec": 7.8
+    },
+    {
+      "t": 23.9,
+      "ts": "2026-11-11T14:49:02.565Z",
+      "endT": 25.7,
+      "role": "participant",
+      "speaker": "Simulator",
+      "text": "That is interesting, but let us try to move on to the next topic",
+      "words": 14
+    },
+    {
+      "t": 31.7,
+      "ts": "2026-11-11T14:49:10.319Z",
+      "endT": 39.8,
+      "role": "facilitator",
+      "speaker": "Yacine",
+      "text": "I understand you're eager to move on, but let's ensure you've agreed on the rankings first. What item do you want to tackle next?",
+      "words": 24,
+      "action": "REDIRECT",
+      "interrupted": false,
+      "estDurationSec": 8.1
+    }
+  ]
+}

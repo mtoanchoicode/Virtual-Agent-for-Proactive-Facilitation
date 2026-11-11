@@ -32,14 +32,13 @@ class Board:
         self.agreed: Set[str] = set()            # session ids that pressed "I agree"
         self.moving: Dict[str, str] = {}         # item id -> session id currently dragging it
         self._started_at: float = 0.0
+        self.events: List[dict] = []             # in-memory copy of the logged events (for the session report)
 
     # ------------------------------------------------------------------ helpers
     def _label(self, item_id: str) -> str:
         return next((it["label"] for it in self.items if it["id"] == item_id), item_id)
 
     def _log(self, event: str, who: str, **data) -> None:
-        if os.environ.get("ENABLE_FILE_LOGGING", "true").lower() != "true":
-            return
         now = time.time()
         if not self._started_at:
             self._started_at = now
@@ -52,6 +51,9 @@ class Board:
             "mode": self.mode,
             **data,
         }
+        self.events.append({**entry, "at": now})
+        if os.environ.get("ENABLE_FILE_LOGGING", "true").lower() != "true":
+            return
         try:
             with open(_LOG_PATH, "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")

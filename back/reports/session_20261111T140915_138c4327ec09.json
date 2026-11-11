@@ -1,0 +1,422 @@
+{
+  "meta": {
+    "sessionId": "138c4327ec09",
+    "startedAt": "2026-11-11T14:09:15.081Z",
+    "endedAt": "2026-11-11T14:14:37.600Z",
+    "durationSec": 322.5,
+    "timeLimitSec": 300,
+    "endReason": "stopped",
+    "mode": "full",
+    "language": "en",
+    "participants": [
+      "Jimmy"
+    ]
+  },
+  "summary": {
+    "conversationTurns": 11,
+    "participantUtterances": {
+      "Jimmy": 15
+    },
+    "participantWords": {
+      "Jimmy": 111
+    },
+    "participantSpeakingSec": {
+      "Jimmy": 67.9
+    },
+    "facilitatorUtterances": 6,
+    "facilitatorWords": 115,
+    "facilitatorSpeakingSecEstimate": 47.6,
+    "facilitatorActions": {
+      "OPEN": 1,
+      "DEEPEN": 1,
+      "NEXT_ITEM": 3,
+      "RESOLVE": 1
+    },
+    "facilitatorSilentTurns": 0,
+    "interruptionsOfFacilitator": 5,
+    "boardMoves": 4,
+    "boardMovesBy": {
+      "Jimmy": 4
+    }
+  },
+  "metrics": {
+    "conversationalBalance": {
+      "words": {
+        "Jimmy": 111
+      },
+      "D": null,
+      "note": "Needs exactly two participants who spoke."
+    },
+    "deadlocks": {
+      "thresholdSec": 4.0,
+      "count": 5,
+      "totalSilenceSec": 204.3,
+      "countExcludingFacilitatorSpeech": 6,
+      "windowStartT": 14.2,
+      "items": [
+        {
+          "startT": 29.3,
+          "endT": 41.2,
+          "durationSec": 12.0
+        },
+        {
+          "startT": 62.2,
+          "endT": 76.7,
+          "durationSec": 14.4
+        },
+        {
+          "startT": 109.3,
+          "endT": 125.6,
+          "durationSec": 16.3
+        },
+        {
+          "startT": 147.1,
+          "endT": 158.0,
+          "durationSec": 10.8
+        },
+        {
+          "startT": 171.8,
+          "endT": 322.5,
+          "durationSec": 150.8
+        }
+      ]
+    },
+    "finalRanking": {
+      "ranking": [
+        {
+          "rank": 1,
+          "itemId": "item-4",
+          "item": "25 liter container of water",
+          "expertRank": 3,
+          "deviation": 2
+        },
+        {
+          "rank": 2,
+          "itemId": "item-5",
+          "item": "Case of army rations",
+          "expertRank": 4,
+          "deviation": 2
+        },
+        {
+          "rank": 3,
+          "itemId": "item-2",
+          "item": "Shaving mirror",
+          "expertRank": 1,
+          "deviation": 2
+        },
+        {
+          "rank": 4,
+          "itemId": "item-8",
+          "item": "10 liter can of oil/petrol mixture",
+          "expertRank": 2,
+          "deviation": 2
+        },
+        {
+          "rank": 5,
+          "itemId": "item-10",
+          "item": "20 sq. ft. of opaque plastic sheeting",
+          "expertRank": 5,
+          "deviation": 0
+        },
+        {
+          "rank": 6,
+          "itemId": "item-1",
+          "item": "Sextant",
+          "expertRank": 6,
+          "deviation": 0
+        }
+      ],
+      "score": 8,
+      "maxScore": 18,
+      "bothAgreed": false,
+      "note": "Score = sum over items of |pair rank - Coast Guard rank|; 0 = identical to the reference."
+    }
+  },
+  "boardEvents": [
+    {
+      "ts": "2026-11-11T14:09:38Z",
+      "event": "move",
+      "by": "Jimmy",
+      "version": 1,
+      "mode": "full",
+      "item": "25 liter container of water",
+      "fromRank": 4,
+      "toRank": 1,
+      "ranking": [
+        "25 liter container of water",
+        "Case of army rations",
+        "Sextant",
+        "10 liter can of oil/petrol mixture",
+        "20 sq. ft. of opaque plastic sheeting",
+        "Shaving mirror"
+      ],
+      "t": 23.8
+    },
+    {
+      "ts": "2026-11-11T14:10:13Z",
+      "event": "move",
+      "by": "Jimmy",
+      "version": 2,
+      "mode": "full",
+      "item": "Sextant",
+      "fromRank": 3,
+      "toRank": 6,
+      "ranking": [
+        "25 liter container of water",
+        "Case of army rations",
+        "10 liter can of oil/petrol mixture",
+        "20 sq. ft. of opaque plastic sheeting",
+        "Shaving mirror",
+        "Sextant"
+      ],
+      "t": 58.6
+    },
+    {
+      "ts": "2026-11-11T14:11:36Z",
+      "event": "move",
+      "by": "Jimmy",
+      "version": 3,
+      "mode": "full",
+      "item": "Shaving mirror",
+      "fromRank": 5,
+      "toRank": 4,
+      "ranking": [
+        "25 liter container of water",
+        "Case of army rations",
+        "10 liter can of oil/petrol mixture",
+        "Shaving mirror",
+        "20 sq. ft. of opaque plastic sheeting",
+        "Sextant"
+      ],
+      "t": 141.6
+    },
+    {
+      "ts": "2026-11-11T14:11:38Z",
+      "event": "move",
+      "by": "Jimmy",
+      "version": 4,
+      "mode": "full",
+      "item": "Shaving mirror",
+      "fromRank": 4,
+      "toRank": 3,
+      "ranking": [
+        "25 liter container of water",
+        "Case of army rations",
+        "Shaving mirror",
+        "10 liter can of oil/petrol mixture",
+        "20 sq. ft. of opaque plastic sheeting",
+        "Sextant"
+      ],
+      "t": 143.8
+    }
+  ],
+  "transcript": [
+    {
+      "t": 0.0,
+      "ts": "2026-11-11T14:09:15.096Z",
+      "endT": 14.2,
+      "role": "facilitator",
+      "speaker": "Yacine",
+      "text": "Hello everyone, welcome! I'm Yacine, and I'll be facilitating your session. Work together to agree on one ranking of the six items. Start with whichever feels most important to you.",
+      "words": 30,
+      "action": "OPEN",
+      "interrupted": false,
+      "estDurationSec": 14.2
+    },
+    {
+      "t": 8.8,
+      "ts": "2026-11-11T14:09:23.840Z",
+      "endT": 23.9,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "Okay, so to start with, ranking 25 liter container of water",
+      "words": 11
+    },
+    {
+      "t": 17.2,
+      "ts": "2026-11-11T14:09:32.330Z",
+      "endT": 29.5,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "And for the case of army rations, a little bit thinking about it",
+      "words": 13
+    },
+    {
+      "t": 36.3,
+      "ts": "2026-11-11T14:09:51.425Z",
+      "endT": 40.3,
+      "role": "facilitator",
+      "speaker": "Yacine",
+      "text": "Why do you think the container of water should be ranked first?",
+      "words": 12,
+      "action": "DEEPEN",
+      "interrupted": false,
+      "estDurationSec": 4.0
+    },
+    {
+      "t": 37.8,
+      "ts": "2026-11-11T14:09:52.920Z",
+      "endT": 52.9,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "Because I think that it is very useful for staying there, because without water you cannot stay there for more than three days.",
+      "words": 23
+    },
+    {
+      "t": 49.6,
+      "ts": "2026-11-11T14:10:04.662Z",
+      "endT": 62.4,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "I wonder the use of sextant in this case.",
+      "words": 9
+    },
+    {
+      "t": 68.9,
+      "ts": "2026-11-11T14:10:24.004Z",
+      "endT": 76.6,
+      "role": "facilitator",
+      "speaker": "Yacine",
+      "text": "Great reasoning on the water! Let's move to the sextant. What are your thoughts on its importance?",
+      "words": 17,
+      "action": "NEXT_ITEM",
+      "interrupted": false,
+      "estDurationSec": 7.7
+    },
+    {
+      "t": 73.6,
+      "ts": "2026-11-11T14:10:28.691Z",
+      "endT": 88.7,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "It is useless in this case.",
+      "words": 6
+    },
+    {
+      "t": 88.4,
+      "ts": "2026-11-11T14:10:43.454Z",
+      "endT": 89.7,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "Sextant",
+      "words": 1
+    },
+    {
+      "t": 90.2,
+      "ts": "2026-11-11T14:10:45.283Z",
+      "endT": 91.8,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "One",
+      "words": 1
+    },
+    {
+      "t": 93.2,
+      "ts": "2026-11-11T14:10:48.257Z",
+      "endT": 103.2,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "In the first place, I would choose the shaving mirror",
+      "words": 10
+    },
+    {
+      "t": 104.1,
+      "ts": "2026-11-11T14:10:59.175Z",
+      "endT": 109.5,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "shaving mirror maybe",
+      "words": 3
+    },
+    {
+      "t": 116.4,
+      "ts": "2026-11-11T14:11:11.493Z",
+      "endT": 123.7,
+      "role": "facilitator",
+      "speaker": "Yacine",
+      "text": "It sounds like you're unsure about the shaving mirror. What does each item serve in terms of survival needs?",
+      "words": 19,
+      "action": "RESOLVE",
+      "interrupted": false,
+      "estDurationSec": 7.2
+    },
+    {
+      "t": 122.4,
+      "ts": "2026-11-11T14:11:17.443Z",
+      "endT": 137.5,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "The shaving mirror for me is a useful one",
+      "words": 9
+    },
+    {
+      "t": 136.1,
+      "ts": "2026-11-11T14:11:31.161Z",
+      "endT": 141.7,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "maybe I'll put it on the third place",
+      "words": 8
+    },
+    {
+      "t": 142.2,
+      "ts": "2026-11-11T14:11:37.247Z",
+      "endT": 147.3,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "maybe the petrol",
+      "words": 3
+    },
+    {
+      "t": 152.0,
+      "ts": "2026-11-11T14:11:47.058Z",
+      "endT": 157.5,
+      "role": "facilitator",
+      "speaker": "Yacine",
+      "text": "You mentioned the shaving mirror at third. How do you rank the petrol can?",
+      "words": 14,
+      "action": "NEXT_ITEM",
+      "interrupted": false,
+      "estDurationSec": 5.6
+    },
+    {
+      "t": 156.7,
+      "ts": "2026-11-11T14:11:51.824Z",
+      "endT": 161.7,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "maybe in the fourth place",
+      "words": 5
+    },
+    {
+      "t": 161.6,
+      "ts": "2026-11-11T14:11:56.642Z",
+      "endT": 166.1,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "in the fourth place",
+      "words": 4
+    },
+    {
+      "t": 167.1,
+      "ts": "2026-11-11T14:12:02.184Z",
+      "endT": 172.0,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "Maybe in the fourth place",
+      "words": 5
+    },
+    {
+      "t": 177.3,
+      "ts": "2026-11-11T14:12:12.394Z",
+      "endT": 186.2,
+      "role": "facilitator",
+      "speaker": "Yacine",
+      "text": "So far, you have water first, shaving mirror third, and petrol fourth. What about the case of army rations and the plastic sheeting?",
+      "words": 23,
+      "action": "NEXT_ITEM",
+      "interrupted": false,
+      "estDurationSec": 8.9
+    }
+  ]
+}

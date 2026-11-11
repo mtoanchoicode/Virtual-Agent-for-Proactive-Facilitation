@@ -1,0 +1,494 @@
+{
+  "meta": {
+    "sessionId": "73dbecb226a2",
+    "startedAt": "2026-11-11T14:29:23.663Z",
+    "endedAt": "2026-11-11T14:34:40.823Z",
+    "durationSec": 317.2,
+    "timeLimitSec": 300,
+    "endReason": "stopped",
+    "mode": "full",
+    "language": "en",
+    "participants": [
+      "Jimmy",
+      "Simulator"
+    ]
+  },
+  "summary": {
+    "conversationTurns": 18,
+    "participantUtterances": {
+      "Jimmy": 18,
+      "Simulator": 8
+    },
+    "participantWords": {
+      "Jimmy": 176,
+      "Simulator": 123
+    },
+    "participantSpeakingSec": {
+      "Jimmy": 92.4,
+      "Simulator": 43.7
+    },
+    "facilitatorUtterances": 10,
+    "facilitatorWords": 199,
+    "facilitatorSpeakingSecEstimate": 78.3,
+    "facilitatorActions": {
+      "OPEN": 1,
+      "CLARIFY": 2,
+      "DEEPEN": 2,
+      "NEXT_ITEM": 2,
+      "RESOLVE": 2,
+      "WRAP_UP": 1
+    },
+    "facilitatorSilentTurns": 1,
+    "interruptionsOfFacilitator": 7,
+    "boardMoves": 1,
+    "boardMovesBy": {
+      "Jimmy": 1
+    }
+  },
+  "metrics": {
+    "conversationalBalance": {
+      "words": {
+        "Jimmy": 176,
+        "Simulator": 123
+      },
+      "D": 0.177,
+      "note": "D = |W1 - W2| / (W1 + W2); 0 = perfectly balanced, 1 = one person did all the talking."
+    },
+    "deadlocks": {
+      "thresholdSec": 4.0,
+      "definition": "Whole room silent >= 4 s: no participant speaking and the agent neither speaking nor preparing a reply.",
+      "count": 0,
+      "totalSilenceSec": 0,
+      "countParticipantsSilentOnly": 9,
+      "windowStartT": 14.2,
+      "items": []
+    },
+    "finalRanking": {
+      "ranking": [
+        {
+          "rank": 1,
+          "itemId": "item-2",
+          "item": "Shaving mirror",
+          "expertRank": 1,
+          "deviation": 0
+        },
+        {
+          "rank": 2,
+          "itemId": "item-5",
+          "item": "Case of army rations",
+          "expertRank": 4,
+          "deviation": 2
+        },
+        {
+          "rank": 3,
+          "itemId": "item-1",
+          "item": "Sextant",
+          "expertRank": 6,
+          "deviation": 3
+        },
+        {
+          "rank": 4,
+          "itemId": "item-8",
+          "item": "10 liter can of oil/petrol mixture",
+          "expertRank": 2,
+          "deviation": 2
+        },
+        {
+          "rank": 5,
+          "itemId": "item-4",
+          "item": "25 liter container of water",
+          "expertRank": 3,
+          "deviation": 2
+        },
+        {
+          "rank": 6,
+          "itemId": "item-10",
+          "item": "20 sq. ft. of opaque plastic sheeting",
+          "expertRank": 5,
+          "deviation": 1
+        }
+      ],
+      "score": 10,
+      "maxScore": 18,
+      "bothAgreed": false,
+      "note": "Score = sum over items of |pair rank - Coast Guard rank|; 0 = identical to the reference."
+    }
+  },
+  "boardEvents": [
+    {
+      "ts": "2026-11-11T14:30:04Z",
+      "event": "move",
+      "by": "Jimmy",
+      "version": 1,
+      "mode": "full",
+      "item": "Shaving mirror",
+      "fromRank": 6,
+      "toRank": 1,
+      "ranking": [
+        "Shaving mirror",
+        "Case of army rations",
+        "Sextant",
+        "10 liter can of oil/petrol mixture",
+        "25 liter container of water",
+        "20 sq. ft. of opaque plastic sheeting"
+      ],
+      "t": 41.3
+    }
+  ],
+  "transcript": [
+    {
+      "t": 0.0,
+      "ts": "2026-11-11T14:29:23.688Z",
+      "endT": 14.2,
+      "role": "facilitator",
+      "speaker": "Yacine",
+      "text": "Hello everyone, welcome! I'm Yacine, and I'll be facilitating your session. Work together to agree on one ranking of the six items. Start with whichever feels most important to you.",
+      "words": 30,
+      "action": "OPEN",
+      "interrupted": false,
+      "estDurationSec": 14.2
+    },
+    {
+      "t": 15.0,
+      "ts": "2026-11-11T14:29:38.615Z",
+      "endT": 29.9,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "Okay, today we will start ranking this. First, is about a sextant?",
+      "words": 12
+    },
+    {
+      "t": 26.3,
+      "ts": "2026-11-11T14:29:49.985Z",
+      "endT": 32.7,
+      "role": "participant",
+      "speaker": "Simulator",
+      "text": "Hello! Great to meet you here today! I am really glad we could join this session",
+      "words": 16
+    },
+    {
+      "t": 29.2,
+      "ts": "2026-11-11T14:29:52.842Z",
+      "endT": 32.3,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "We put it on the first place.",
+      "words": 7
+    },
+    {
+      "t": 35.2,
+      "ts": "2026-11-11T14:29:58.903Z",
+      "endT": 46.3,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "Okay, so put a shaving mirror on the first place.",
+      "words": 10
+    },
+    {
+      "t": 40.7,
+      "ts": "2026-11-11T14:30:04.357Z",
+      "endT": 46.6,
+      "role": "participant",
+      "speaker": "Simulator",
+      "text": "Yes, I completely agree with that point. That makes a lot of sense to me.",
+      "words": 15
+    },
+    {
+      "t": 50.9,
+      "ts": "2026-11-11T14:30:14.567Z",
+      "endT": 51.9,
+      "role": "participant",
+      "speaker": "Simulator",
+      "text": "I'd love to hear more details",
+      "words": 6
+    },
+    {
+      "t": 58.5,
+      "ts": "2026-11-11T14:30:22.206Z",
+      "endT": 64.2,
+      "role": "facilitator",
+      "speaker": "Yacine",
+      "text": "Just to confirm, are you both referring to the sextant for ranking, or the shaving mirror?",
+      "words": 16,
+      "action": "CLARIFY",
+      "interrupted": false,
+      "estDurationSec": 5.6
+    },
+    {
+      "t": 63.0,
+      "ts": "2026-11-11T14:30:26.700Z",
+      "endT": 66.2,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "I mean the sextant?",
+      "words": 4
+    },
+    {
+      "t": 66.2,
+      "ts": "2026-11-11T14:30:29.888Z",
+      "endT": 72.5,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "So you agree that the sextant will be put on the top?",
+      "words": 12
+    },
+    {
+      "t": 76.7,
+      "ts": "2026-11-11T14:30:40.368Z",
+      "endT": 77.4,
+      "role": "participant",
+      "speaker": "Simulator",
+      "text": "That is a really interesting perspective, thank you very much for sharing that with us.",
+      "words": 15
+    },
+    {
+      "t": 77.4,
+      "ts": "2026-11-11T14:30:41.022Z",
+      "endT": 80.3,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "I saw maybe put it on top too.",
+      "words": 8
+    },
+    {
+      "t": 86.0,
+      "ts": "2026-11-11T14:30:49.626Z",
+      "endT": 91.4,
+      "role": "facilitator",
+      "speaker": "Yacine",
+      "text": "Can you explain why you believe the sextant should be the most important item for survival?",
+      "words": 16,
+      "action": "DEEPEN",
+      "interrupted": false,
+      "estDurationSec": 5.4
+    },
+    {
+      "t": 88.3,
+      "ts": "2026-11-11T14:30:51.919Z",
+      "endT": 103.4,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "The sextant seems the only thing here that we need to find our way back home.",
+      "words": 16
+    },
+    {
+      "t": 101.5,
+      "ts": "2026-11-11T14:31:05.195Z",
+      "endT": 109.5,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "I don't think that would be.",
+      "words": 6
+    },
+    {
+      "t": 109.7,
+      "ts": "2026-11-11T14:31:13.317Z",
+      "endT": 113.7,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "The part of this one",
+      "words": 5
+    },
+    {
+      "t": 113.8,
+      "ts": "2026-11-11T14:31:17.430Z",
+      "endT": 120.7,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "Yeah, the sextant would be the first one.",
+      "words": 8
+    },
+    {
+      "t": 126.2,
+      "ts": "2026-11-11T14:31:29.912Z",
+      "endT": 135.7,
+      "role": "facilitator",
+      "speaker": "Yacine",
+      "text": "Great! You've agreed on the sextant for the top position. What do you think about the 25-liter container of water next?",
+      "words": 21,
+      "action": "NEXT_ITEM",
+      "interrupted": false,
+      "estDurationSec": 9.4
+    },
+    {
+      "t": 133.2,
+      "ts": "2026-11-11T14:31:36.829Z",
+      "endT": 148.0,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "Water is important, but if you need to find your way back, the water, maybe put in the sextant, is good.",
+      "words": 21
+    },
+    {
+      "t": 145.0,
+      "ts": "2026-11-11T14:31:48.704Z",
+      "endT": 160.1,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "I think the sextant should be in the first one, maybe the rations.",
+      "words": 13
+    },
+    {
+      "t": 159.7,
+      "ts": "2026-11-11T14:32:03.365Z",
+      "endT": 160.7,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "Water is important, but if you need to find your way back, the water, maybe putting the sextant, is good.",
+      "words": 20
+    },
+    {
+      "t": 166.3,
+      "ts": "2026-11-11T14:32:09.982Z",
+      "endT": 174.5,
+      "role": "facilitator",
+      "speaker": "Yacine",
+      "text": "It sounds like there's some disagreement about ranking water versus the rations. What survival need does each item serve for you?",
+      "words": 21,
+      "action": "RESOLVE",
+      "interrupted": false,
+      "estDurationSec": 8.1
+    },
+    {
+      "t": 180.4,
+      "ts": "2026-11-11T14:32:24.026Z",
+      "endT": 185.5,
+      "role": "participant",
+      "speaker": "Simulator",
+      "text": "I am not quite sure I fully agree with that. Could we discuss it a little bit further?",
+      "words": 18
+    },
+    {
+      "t": 200.8,
+      "ts": "2026-11-11T14:32:44.501Z",
+      "endT": 205.4,
+      "role": "participant",
+      "speaker": "Simulator",
+      "text": "I am not quite sure I fully agree with that. Could we discuss it a little bit further?",
+      "words": 18
+    },
+    {
+      "t": 210.7,
+      "ts": "2026-11-11T14:32:54.402Z",
+      "endT": 215.4,
+      "role": "facilitator",
+      "speaker": "Yacine",
+      "text": "What specific concerns do you have with ranking the water or the rations?",
+      "words": 13,
+      "action": "DEEPEN",
+      "interrupted": false,
+      "estDurationSec": 4.7
+    },
+    {
+      "t": 212.4,
+      "ts": "2026-11-11T14:32:56.081Z",
+      "endT": 227.5,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "One, two, three, four, five, six, seven, eight, nine, ten.",
+      "words": 10
+    },
+    {
+      "t": 223.4,
+      "ts": "2026-11-11T14:33:07.104Z",
+      "endT": 238.5,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "One, two, three, four, five, six.",
+      "words": 6
+    },
+    {
+      "t": 237.6,
+      "ts": "2026-11-11T14:33:21.247Z",
+      "endT": 241.0,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "One, two, three, four, five, six",
+      "words": 6
+    },
+    {
+      "t": 246.0,
+      "ts": "2026-11-11T14:33:29.680Z",
+      "endT": 254.2,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "Maybe let's see our final rankings?",
+      "words": 6
+    },
+    {
+      "t": 260.7,
+      "ts": "2026-11-11T14:33:44.343Z",
+      "endT": 270.4,
+      "role": "facilitator",
+      "speaker": "Yacine",
+      "text": "You haven't decided on the rankings yet. Which item would you like to discuss next, the case of army rations or the 25-liter container of water?",
+      "words": 26,
+      "action": "NEXT_ITEM",
+      "interrupted": false,
+      "estDurationSec": 9.7
+    },
+    {
+      "t": 271.8,
+      "ts": "2026-11-11T14:33:55.438Z",
+      "endT": 275.6,
+      "role": "participant",
+      "speaker": "Simulator",
+      "text": "So to summarize what we have discussed so far, the main points seem to be very clear now.",
+      "words": 18
+    },
+    {
+      "t": 281.9,
+      "ts": "2026-11-11T14:34:05.529Z",
+      "endT": 290.4,
+      "role": "facilitator",
+      "speaker": "Yacine",
+      "text": "It sounds like you're ready to summarize, but we still need to finalize the rankings. Can you clarify which item to focus on next?",
+      "words": 24,
+      "action": "CLARIFY",
+      "interrupted": false,
+      "estDurationSec": 8.6
+    },
+    {
+      "t": 294.1,
+      "ts": "2026-11-11T14:34:17.806Z",
+      "endT": 298.3,
+      "role": "participant",
+      "speaker": "Jimmy",
+      "text": "Yes, I think we're done now.",
+      "words": 6
+    },
+    {
+      "t": 295.0,
+      "ts": "2026-11-11T14:34:18.664Z",
+      "endT": 299.6,
+      "role": "participant",
+      "speaker": "Simulator",
+      "text": "That is interesting, but let us try to move on to the next topic now, shall we?",
+      "words": 17
+    },
+    {
+      "t": 304.0,
+      "ts": "2026-11-11T14:34:27.697Z",
+      "endT": 311.4,
+      "role": "facilitator",
+      "speaker": "Yacine",
+      "text": "It seems there’s still some disagreement. Can you both briefly state your top two items left to rank and why?",
+      "words": 20,
+      "action": "RESOLVE",
+      "interrupted": false,
+      "estDurationSec": 7.3
+    },
+    {
+      "t": 311.4,
+      "ts": "2026-11-11T14:34:35.017Z",
+      "endT": 316.6,
+      "role": "facilitator",
+      "speaker": "Yacine",
+      "text": "TIME IS UP. Finish placing your cards and agree on the board.",
+      "words": 12,
+      "action": "WRAP_UP",
+      "interrupted": false,
+      "estDurationSec": 5.2
+    }
+  ]
+}

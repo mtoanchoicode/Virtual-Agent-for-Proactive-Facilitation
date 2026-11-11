@@ -10,6 +10,7 @@ import { ImageSegmenter, FaceLandmarker, FilesetResolver } from "@mediapipe/task
 import { MicTestModal } from "./components/MicTestModal";
 import { SimulatorPanel } from "./components/SimulatorPanel";
 import RankingBoard from "./components/RankingBoard";
+import SessionSummaryModal from "./components/SessionSummaryModal";
 import { useT, useLang, actionLabel } from "./i18n";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "";
@@ -1242,6 +1243,7 @@ function App() {
       <Loader />
       <Leva hidden />
       <RankingBoard />
+      <SessionSummaryModal />
       {facilitatorMode === "lite" && <LiteAudioPlayer />}
 
       {showJoinModal && <JoinModal onJoin={handleJoin} />}

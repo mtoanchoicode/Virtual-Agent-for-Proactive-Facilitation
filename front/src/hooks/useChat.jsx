@@ -67,6 +67,7 @@ export const ChatProvider = ({ children }) => {
   // Session timer: total length (shared, adjustable 1-20 min) and, while running, when it started (local ms).
   const [timeLimitSec, setTimeLimitSec] = useState(300);
   const [sessionStartedAt, setSessionStartedAt] = useState(null);
+  const [sessionReport, setSessionReport] = useState(null); // end-of-session summary from the server
 
   useEffect(() => {
     fetch(`${BACKEND_URL}/room/time-limit`)
@@ -648,6 +649,7 @@ export const ChatProvider = ({ children }) => {
           setLocalVoiceStreaming(false);
           setRoomState("idle");
           stopAudioStreaming();
+          if (data.report) setSessionReport(data.report);
           break;
 
         case "voice_started":
@@ -960,6 +962,8 @@ export const ChatProvider = ({ children }) => {
         voiceSessionActive,
         timeLimitSec,
         sessionStartedAt,
+        sessionReport,
+        closeSessionReport: () => setSessionReport(null),
         setTimeLimitMinutes,
         localVoiceStreaming,
         startVoiceSession,
