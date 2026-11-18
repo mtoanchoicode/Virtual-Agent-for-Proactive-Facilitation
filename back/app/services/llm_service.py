@@ -231,15 +231,15 @@ class ConversationManager:
 
     def get_lite_prompt(self) -> List[dict]:
         """
-        Build the Lite Mode (baseline) prompt: a plain voice assistant that knows it is the
-        facilitator but has no action menu or intervention strategy. It replies every turn
+        Build the Lite Mode (baseline) prompt: a plain voice assistant that knows the task
+        but has no facilitator role, action menu or intervention strategy. It replies every turn
         to whatever was just said, like a ChatGPT voice chat.
         Strips any ACTION:/TEXT: formatting from history so the LLM
         doesn't mimic the Full Mode format.
         """
-        system_content = "You are Yacine, an AI facilitator for this session."
+        system_content = "You are Yacine, a voice assistant helping two people with a task."
         if scenario.ENABLED:
-            system_content += f"\n\n{scenario.task_brief()}"
+            system_content += f"\n\n{scenario.task_brief(include_time=False)}"
         system_content += (
             "\n\nReply to what was just said. "
             "Your reply is spoken aloud, so keep it short (one or two sentences) "

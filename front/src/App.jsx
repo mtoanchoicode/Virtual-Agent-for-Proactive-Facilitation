@@ -880,202 +880,6 @@ function EmptyCell() {
   );
 }
 
-// ── Lite Avatar View ─────────────────────────────────────────────────────────
-function LiteAvatarView({ roomState }) {
-  const t = useT();
-  // Color + behaviour per state
-  const stateConfig = {
-    idle:       { color: "#6366f1", glow: "rgba(99,102,241,0.35)",  label: t("state.idle", "Idle"),       bars: 4 },
-    listening:  { color: "#22c55e", glow: "rgba(34,197,94,0.45)",   label: t("state.listening", "Listening"),  bars: 7 },
-    processing: { color: "#f59e0b", glow: "rgba(245,158,11,0.45)",  label: t("state.processing", "Thinking"),   bars: 5 },
-    speaking:   { color: "#38bdf8", glow: "rgba(56,189,248,0.5)",   label: t("state.speaking", "Speaking"),   bars: 9 },
-  };
-  const cfg = stateConfig[roomState] ?? stateConfig.idle;
-
-  const styleTag = `
-    @keyframes lite-pulse {
-      0%, 100% { transform: scale(1);   opacity: 0.7; }
-      50%       { transform: scale(1.18); opacity: 1;   }
-    }
-    @keyframes lite-ring {
-      0%   { transform: scale(0.85); opacity: 0.6; }
-      50%  { transform: scale(1.35); opacity: 0;   }
-      100% { transform: scale(0.85); opacity: 0;   }
-    }
-    @keyframes lite-bar {
-      0%, 100% { transform: scaleY(0.25); }
-      50%      { transform: scaleY(1);    }
-    }
-  `;
-
-  const numBars = cfg.bars;
-  const bars = Array.from({ length: numBars });
-
-  return (
-    <div
-      style={{
-        width: "100%",
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: "28px",
-        position: "relative",
-        overflow: "hidden",
-      }}
-    >
-      <style>{styleTag}</style>
-
-      {/* Ambient background glow */}
-      <div
-        style={{
-          position: "absolute",
-          width: "300px",
-          height: "300px",
-          borderRadius: "50%",
-          background: `radial-gradient(circle, ${cfg.glow} 0%, transparent 70%)`,
-          transition: "background 0.6s ease",
-          pointerEvents: "none",
-        }}
-      />
-
-      {/* Outer pulsing rings */}
-      {[1, 2].map((i) => (
-        <div
-          key={i}
-          style={{
-            position: "absolute",
-            width: `${90 + i * 55}px`,
-            height: `${90 + i * 55}px`,
-            borderRadius: "50%",
-            border: `1px solid ${cfg.color}`,
-            opacity: roomState === "idle" ? 0 : 0.4,
-            animation: roomState !== "idle" ? `lite-ring ${1.2 + i * 0.5}s ease-out ${i * 0.3}s infinite` : "none",
-            transition: "opacity 0.4s",
-            pointerEvents: "none",
-          }}
-        />
-      ))}
-
-      {/* Core orb */}
-      <div
-        style={{
-          position: "relative",
-          width: "80px",
-          height: "80px",
-          borderRadius: "50%",
-          background: `radial-gradient(circle at 35% 35%, ${cfg.color}cc, ${cfg.color}55)`,
-          boxShadow: `0 0 32px ${cfg.glow}, 0 0 8px ${cfg.color}88`,
-          animation: "lite-pulse 2s ease-in-out infinite",
-          transition: "background 0.6s ease, box-shadow 0.6s ease",
-          flexShrink: 0,
-        }}
-      />
-
-      {/* Sound bars — visible when listening or speaking */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "5px",
-          height: "40px",
-          opacity: (roomState === "listening" || roomState === "speaking") ? 1 : 0.2,
-          transition: "opacity 0.4s",
-        }}
-      >
-        {bars.map((_, i) => {
-          const delay = (i / numBars) * 0.9;
-          const dur = 0.5 + (i % 3) * 0.2;
-          return (
-            <div
-              key={i}
-              style={{
-                width: "4px",
-                height: "100%",
-                borderRadius: "2px",
-                background: cfg.color,
-                transformOrigin: "center",
-                animation: (roomState === "listening" || roomState === "speaking")
-                  ? `lite-bar ${dur}s ease-in-out ${delay}s infinite`
-                  : "none",
-                transform: "scaleY(0.25)",
-                transition: "background 0.5s",
-              }}
-            />
-          );
-        })}
-      </div>
-
-      {/* State label */}
-      <div
-        style={{
-          fontSize: "10px",
-          fontWeight: 700,
-          letterSpacing: "0.25em",
-          textTransform: "uppercase",
-          color: cfg.color,
-          fontFamily: "'DM Mono', 'Fira Mono', monospace",
-          opacity: 0.8,
-          transition: "color 0.5s",
-        }}
-      >
-        {cfg.label}
-      </div>
-    </div>
-  );
-}
-
-// ── Lite Audio Player ────────────────────────────────────────────────────────
-// Handles audio playback and onMessagePlayed() when the 3D Avatar is absent.
-function LiteAudioPlayer() {
-  const { message, onMessagePlayed } = useChat();
-  const audioCtxRef = useRef(null);
-  const sourceRef = useRef(null);
-
-  useEffect(() => {
-    if (!message) return;
-
-    const audio = message.audioEl
-      ? message.audioEl
-      : (() => {
-          const mimeType = message.audio?.startsWith("UklGR") ? "audio/wav" : "audio/mpeg";
-          return new Audio(`data:${mimeType};base64,${message.audio}`);
-        })();
-
-    // Set up AudioContext (needed to unlock autoplay in browsers)
-    if (!audioCtxRef.current) {
-      audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    const ctx = audioCtxRef.current;
-    if (ctx.state === "suspended") ctx.resume();
-
-    try {
-      if (sourceRef.current) sourceRef.current.disconnect();
-      const source = ctx.createMediaElementSource(audio);
-      source.connect(ctx.destination);
-      sourceRef.current = source;
-    } catch (e) {
-      // Already connected — ignore
-    }
-
-    audio.play().catch((err) => {
-      console.error("[LiteAudioPlayer] play error:", err);
-      // Still need to call onMessagePlayed so the queue doesn't jam
-      onMessagePlayed();
-    });
-
-    audio.onended = () => {
-      onMessagePlayed();
-      if (sourceRef.current) {
-        try { sourceRef.current.disconnect(); } catch (_) {}
-      }
-    };
-  }, [message]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return null; // renders nothing
-}
-
 // ── Icon helpers ────────────────────────────────────────────────────────────
 function MicOnIcon() {
   return (
@@ -1190,7 +994,6 @@ function App() {
     facilitatorLogs,
     voiceSessionActive,
     lastFacilitatorAction,
-    roomState,
     facilitatorMode,
     toggleFacilitatorMode,
     modeLoading,
@@ -1244,7 +1047,6 @@ function App() {
       <Leva hidden />
       <RankingBoard />
       <SessionSummaryModal />
-      {facilitatorMode === "lite" && <LiteAudioPlayer />}
 
       {showJoinModal && <JoinModal onJoin={handleJoin} />}
       {showSimulator && isJoined && (
@@ -1527,17 +1329,13 @@ function App() {
             />
 
             <div className="h-full">
-              {facilitatorMode === "lite" ? (
-                <LiteAvatarView roomState={roomState} />
-              ) : (
-                <Canvas
-                  shadows
-                  camera={{ position: [0, 0, 1], fov: 30 }}
-                  style={{ width: "100%", height: "100%" }}
-                >
-                  <Experience />
-                </Canvas>
-              )}
+              <Canvas
+                shadows
+                camera={{ position: [0, 0, 1], fov: 30 }}
+                style={{ width: "100%", height: "100%" }}
+              >
+                <Experience />
+              </Canvas>
             </div>
 
             {/* Facilitator status log box */}

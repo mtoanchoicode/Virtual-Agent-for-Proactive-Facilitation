@@ -7,7 +7,7 @@ import time
 import re
 import wave as wave_mod
 from datetime import datetime
-from typing import List, Optional, Dict, Set
+from typing import Iterable, List, Optional, Dict, Set, Tuple
 
 from fastapi import WebSocket
 
@@ -32,6 +32,27 @@ WELCOME_TEXT = {
     "vi": "Xin chào mọi người, chào mừng các bạn! Mình là Yacine, người điều phối buổi thảo luận hôm nay. "
           "Hãy cùng nhau thống nhất một bảng xếp hạng cho sáu món đồ. Các bạn có thể bắt đầu với món nào quan trọng nhất.",
 }
+
+def _collect_turn_transcripts(participants: Iterable["Participant"]) -> List[dict]:
+    """Merge every participant's transcribed chunks for this turn into ONE chronological list, so the
+    LLM sees who replied to whom (e.g. A: 'water first?' then B: 'yes'). Consecutive chunks from the
+    same speaker are joined into one entry. Resets each participant's STT state."""
+    chunks = []
+    for p in participants:
+        for idx, (t_start, text) in p.transcripts.items():
+            if text.strip():
+                chunks.append((t_start, idx, p.name, text.strip()))
+        p.reset_stt()
+    chunks.sort(key=lambda c: (c[0], c[1]))
+
+    merged: List[dict] = []
+    for _, _, speaker, text in chunks:
+        if merged and merged[-1]["speaker"] == speaker:
+            merged[-1]["text"] += " " + text
+        else:
+            merged.append({"speaker": speaker, "text": text})
+    return merged
+
 
 def extract_messages_from_json(json_string: str) -> List[dict]:
     messages = []
@@ -132,7 +153,7 @@ class Participant:
         self.audio_chunks: bytearray = bytearray()
         self.is_speaking: bool = False
         self.entropy: int = 0
-        self.transcripts: Dict[int, str] = {}
+        self.transcripts: Dict[int, Tuple[float, str]] = {}  # chunk index -> (spoken-at time, text)
         self.chunk_index: int = 0
         self.word_count: int = 0
         self.pending_tasks: Set[asyncio.Task] = set()
@@ -576,7 +597,7 @@ class Room:
                 return
             await self.broadcast_log(f"[transcript] {p.name}: \"{text}\"", "info")
             if text:
-                p.transcripts[chunk_idx] = text
+                p.transcripts[chunk_idx] = (t_start, text)
                 p.last_text = text[-200:]
                 self.recorder.add_participant_utterance(p.name, text, t_start, t_end)
         except Exception as e:
@@ -810,13 +831,7 @@ class Room:
 
         timing["t_stt_done"] = time.time()
 
-        # Collect transcripts
-        for p in self._participants.values():
-            sorted_texts = [p.transcripts[k] for k in sorted(p.transcripts.keys())]
-            text = " ".join(sorted_texts).strip()
-            if text:
-                transcripts.append({"speaker": p.name, "text": text})
-            p.reset_stt()
+        transcripts = _collect_turn_transcripts(self._participants.values())
 
         if not transcripts:
             print("[room][lite] no transcribable audio — skipping")
@@ -944,15 +959,12 @@ class Room:
 
         timing["t_stt_done"] = time.time()
 
-        # Collect transcripts and update word counts
-        for p in self._participants.values():
-            sorted_texts = [p.transcripts[k] for k in sorted(p.transcripts.keys())]
-            text = " ".join(sorted_texts).strip()
-            if text:
-                transcripts.append({"speaker": p.name, "text": text})
-                # Add word count (split by spaces)
-                p.word_count += len(text.split())
-            p.reset_stt()
+        # Collect transcripts (chronological, speakers interleaved) and update word counts
+        transcripts = _collect_turn_transcripts(self._participants.values())
+        by_name = {p.name: p for p in self._participants.values()}
+        for t in transcripts:
+            if t["speaker"] in by_name:
+                by_name[t["speaker"]].word_count += len(t["text"].split())
 
         has_transcripts = len(transcripts) > 0
 

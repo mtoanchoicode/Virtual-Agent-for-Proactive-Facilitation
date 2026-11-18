@@ -62,15 +62,17 @@ def minutes_text() -> str:
     return f"{m} minute" if m == 1 else f"{m} minutes"
 
 
-def task_brief() -> str:
-    """Scenario and task only, with no facilitation guidance (used by Lite Mode)."""
+def task_brief(include_time: bool = True) -> str:
+    """Scenario and task only, with no facilitation guidance. Lite Mode passes include_time=False
+    (it has no clock, so a time limit would be information it cannot act on)."""
+    time_part = f"within {minutes_text()}, " if include_time else ""
     return (
     "SCENARIO: 'Lost at Sea'. Two participants are crew of a yacht that caught fire and is sinking in the "
     "South Pacific, about 1,000 miles from the nearest land. They are in a rubber life raft with oars. "
     f"Their pockets hold cigarettes, matches and five one-dollar bills. These {N_ITEMS} items survived:\n"
     + "; ".join(ITEMS)
     + ".\n"
-    f"TASK: within {minutes_text()}, discuss and agree on ONE shared ranking of all {N_ITEMS} items, "
+    f"TASK: {time_part}discuss and agree on ONE shared ranking of all {N_ITEMS} items, "
     f"1 = most important to survival, {N_ITEMS} = least important. Both must agree on every rank."
     )
 
