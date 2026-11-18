@@ -32,9 +32,10 @@ def task_brief(minutes: int) -> str:
         "hold a package of cigarettes, several books of matches and five one-dollar bills. These 6 items are intact:\n"
         + "\n".join(f"- {label}" for label in LABELS)
         + f"\n\nWithin {minutes} minute(s), you and your partner must agree on ONE ranking of all 6 items by "
-        "importance to your survival (1 = most important, 6 = least). A shared ranking board on screen shows "
-        "the current order; either of you can move cards. When you are both satisfied with the whole board, "
-        "each of you presses \"I agree\"."
+        "importance to your survival (1 = most important, 6 = least). A shared ranking board on screen has 6 "
+        "empty rank slots and a pool of undecided cards; either of you can drag a card into a slot, move it, "
+        "or send it back to the pool. When every card is placed and you are both satisfied with the whole "
+        "board, each of you presses \"I agree\"."
     )
 
 

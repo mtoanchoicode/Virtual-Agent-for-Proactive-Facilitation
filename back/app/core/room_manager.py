@@ -182,6 +182,9 @@ class Participant:
 class Room:
     def __init__(self):
         self._participants: Dict[str, Participant] = {}
+        # Hidden admin observers: receive every broadcast (audio, board, logs, reports) but are never
+        # participants, so they don't count toward the room limit, the board, the transcript or metrics.
+        self._observers: Dict[str, WebSocket] = {}
         self._lock = asyncio.Lock()
         self.voice_session_active: bool = False
         self.voice_session_started_at: float = 0.0  # when Start was clicked (drives the on-screen countdown)
@@ -193,7 +196,7 @@ class Room:
         self._current_turn_task: Optional[asyncio.Task] = None
         self._tts_tasks: Set[asyncio.Task] = set()
         self._turn_count: int = 0
-        self.mode: str = "full"  # "full" or "lite"
+        self.mode: str = "full"  # "full" | "lite" | "silent"
         self._stt_bad_models: Set[str] = set()
         self.board = Board()  # shared ranking board; never shown to the facilitator LLM
         self.recorder = SessionRecorder()  # transcript + metrics for the end-of-session report
@@ -234,6 +237,32 @@ class Room:
             self.board.drop_session(session_id)
             return p
 
+    # ------------------------------------------------------------------ admin observers
+    def add_observer(self, session_id: str, websocket: WebSocket) -> None:
+        self._observers[session_id] = websocket
+
+    def remove_observer(self, session_id: str) -> None:
+        self._observers.pop(session_id, None)
+
+    def observer_ids(self) -> List[str]:
+        return list(self._observers.keys())
+
+    async def send_to_participants(self, payload: dict) -> None:
+        for p in list(self._participants.values()):
+            try:
+                await p.websocket.send_json(payload)
+            except Exception:
+                pass
+
+    async def send_board_to_observer(self, session_id: str) -> None:
+        ws = self._observers.get(session_id)
+        if ws is None or not scenario.ENABLED:
+            return
+        try:
+            await ws.send_json({"type": "board_state", **self.board.snapshot(self._participants)})
+        except Exception:
+            self.remove_observer(session_id)
+
     # ------------------------------------------------------------------ ranking board
     async def broadcast_board(self) -> None:
         if not scenario.ENABLED:
@@ -246,7 +275,8 @@ class Room:
         await self.send_to(session_id, {"type": "board_state", **self.board.snapshot(self._participants)})
 
     async def board_action(self, session_id: str, payload: dict) -> None:
-        """Handle board_drag_start / board_drag_end / board_move / board_agree from a client."""
+        """Handle board_drag_start / board_drag_end / board_move (place into slot toIndex) /
+        board_unplace (back to the pool) / board_agree from a client."""
         p = self.get(session_id)
         if p is None or not scenario.ENABLED:
             return
@@ -262,7 +292,9 @@ class Room:
             except (TypeError, ValueError):
                 to_index = None
             if to_index is not None:
-                self.board.move(session_id, p.name, item_id, to_index, self._participants)
+                self.board.place(session_id, p.name, item_id, to_index)
+        elif kind == "board_unplace":
+            self.board.unplace(session_id, p.name, item_id)
         elif kind == "board_agree":
             self.board.set_agreed(session_id, p.name, bool(payload.get("agreed")), self._participants)
         # Always send the authoritative state back, so a rejected move snaps the client back.
@@ -289,6 +321,13 @@ class Room:
                 dead.append(sid)
         for sid in dead:
             await self.remove(sid)
+        for sid, ws in list(self._observers.items()):
+            if sid == exclude:
+                continue
+            try:
+                await ws.send_json(payload)
+            except Exception:
+                self.remove_observer(sid)
 
     async def broadcast_log(self, message: str, level: str = "info") -> None:
         """Print to terminal AND stream to all connected frontends."""
@@ -307,6 +346,13 @@ class Room:
                 await p.websocket.send_json(payload)
             except Exception:
                 await self.remove(session_id)
+            return
+        ws = self._observers.get(session_id)  # WebRTC signalling to a hidden admin
+        if ws is not None:
+            try:
+                await ws.send_json(payload)
+            except Exception:
+                self.remove_observer(session_id)
 
     async def activate_voice_session(self) -> None:
         if self.voice_session_active:
@@ -755,7 +801,9 @@ class Room:
             "text_snippet": "",
         }
         try:
-            prompt = shared_conv.get_proactive_prompt(kind, self.scenario_elapsed())
+            prompt = shared_conv.get_proactive_prompt(
+                kind, self.scenario_elapsed(), self.board.facilitator_view(self._participants)
+            )
             response = await client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=prompt,
@@ -776,12 +824,53 @@ class Room:
             traceback.print_exc()
             await self.broadcast({"type": "error", "detail": str(e)})
 
+    async def _gather_turn_transcripts(self, tag: str = "[room]") -> List[dict]:
+        """Flush leftover audio into STT tasks, wait for all pending STT, and return this turn's transcripts."""
+        for p in self._participants.values():
+            if len(p.audio_chunks) > 0:
+                chunk_data = bytes(p.audio_chunks)
+                p.audio_chunks.clear()
+                if len(chunk_data) > 3200:
+                    idx = p.chunk_index
+                    p.chunk_index += 1
+                    task = asyncio.create_task(self._transcribe_bg(p, chunk_data, idx))
+                    p.pending_tasks.add(task)
+                    task.add_done_callback(p.pending_tasks.discard)
+
+        all_tasks = []
+        for p in self._participants.values():
+            all_tasks.extend(list(p.pending_tasks))
+        if all_tasks:
+            print(f"{tag} waiting for {len(all_tasks)} background transcription tasks to complete...")
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*all_tasks, return_exceptions=True),
+                    timeout=STT_WAIT_SEC,
+                )
+            except asyncio.TimeoutError:
+                print(f"{tag} STT tasks timed out — proceeding with available transcripts")
+
+        return _collect_turn_transcripts(self._participants.values())
+
     async def _process_turn(self, silence_at: float) -> None:
-        """Route to full or lite processing based on room.mode."""
+        """Route to full, lite or silent processing based on room.mode."""
         if self.mode == "lite":
             await self._process_turn_lite(silence_at)
+        elif self.mode == "silent":
+            await self._process_turn_silent(silence_at)
         else:
             await self._process_turn_full(silence_at)
+
+    async def _process_turn_silent(self, silence_at: float) -> None:
+        """Silent Mode: transcribe and log the turn only — the avatar never speaks (no LLM, no TTS)."""
+        self._turn_count += 1
+        transcripts = await self._gather_turn_transcripts("[room][silent]")
+        if transcripts:
+            shared_conv.add_turn(transcripts)
+            await self.broadcast({"type": "turn_transcripts", "transcripts": transcripts})
+            await self.broadcast_log(f"[room][silent] Transcripts collected ({len(transcripts)} speaker(s))", "info")
+        # Always release clients back to idle — there is no AI response to wait for.
+        await self.broadcast({"type": "turn_skipped"})
 
     async def _process_turn_lite(self, silence_at: float) -> None:
         """Lite Mode: simple LLM prompt, always speaks, no action parsing."""
@@ -802,36 +891,8 @@ class Room:
             "action":              "LITE",
             "text_snippet":        "",
         }
-        transcripts: List[dict] = []
-
-        # Finalize remaining audio
-        for p in self._participants.values():
-            if len(p.audio_chunks) > 0:
-                chunk_data = bytes(p.audio_chunks)
-                p.audio_chunks.clear()
-                if len(chunk_data) > 3200:
-                    idx = p.chunk_index
-                    p.chunk_index += 1
-                    task = asyncio.create_task(self._transcribe_bg(p, chunk_data, idx))
-                    p.pending_tasks.add(task)
-                    task.add_done_callback(p.pending_tasks.discard)
-
-        # Wait for background transcriptions
-        all_tasks = []
-        for p in self._participants.values():
-            all_tasks.extend(list(p.pending_tasks))
-        if all_tasks:
-            try:
-                await asyncio.wait_for(
-                    asyncio.gather(*all_tasks, return_exceptions=True),
-                    timeout=STT_WAIT_SEC,
-                )
-            except asyncio.TimeoutError:
-                print("[room][lite] STT tasks timed out")
-
+        transcripts = await self._gather_turn_transcripts("[room][lite]")
         timing["t_stt_done"] = time.time()
-
-        transcripts = _collect_turn_transcripts(self._participants.values())
 
         if not transcripts:
             print("[room][lite] no transcribable audio — skipping")
@@ -927,40 +988,9 @@ class Room:
             "action":              "NO_ACTION",
             "text_snippet":        "",
         }
-        transcripts: List[dict] = []
-
-        # Finalize any remaining audio chunks into transcription tasks
-        for p in self._participants.values():
-            if len(p.audio_chunks) > 0:
-                chunk_data = bytes(p.audio_chunks)
-                p.audio_chunks.clear()
-                if len(chunk_data) > 3200:
-                    idx = p.chunk_index
-                    p.chunk_index += 1
-                    task = asyncio.create_task(self._transcribe_bg(p, chunk_data, idx))
-                    p.pending_tasks.add(task)
-                    task.add_done_callback(p.pending_tasks.discard)
-
-        # Wait for all background transcription tasks
-        all_tasks = []
-        for p in self._participants.values():
-            all_tasks.extend(list(p.pending_tasks))
-            
-        if all_tasks:
-            print(f"[room] waiting for {len(all_tasks)} background transcription tasks to complete...")
-            try:
-                await asyncio.wait_for(
-                    asyncio.gather(*all_tasks, return_exceptions=True),
-                    timeout=STT_WAIT_SEC,
-                )
-                print("[room] all background tasks completed")
-            except asyncio.TimeoutError:
-                print("[room] STT tasks timed out — proceeding with available transcripts")
-
-        timing["t_stt_done"] = time.time()
-
         # Collect transcripts (chronological, speakers interleaved) and update word counts
-        transcripts = _collect_turn_transcripts(self._participants.values())
+        transcripts = await self._gather_turn_transcripts("[room]")
+        timing["t_stt_done"] = time.time()
         by_name = {p.name: p for p in self._participants.values()}
         for t in transcripts:
             if t["speaker"] in by_name:
@@ -997,6 +1027,7 @@ class Room:
                 metadata_parts.append(
                     f"[PROGRESS] {el // 60}:{el % 60:02d} of {scenario.TIME_LIMIT_SEC // 60}:{scenario.TIME_LIMIT_SEC % 60:02d} elapsed."
                 )
+                metadata_parts.append(self.board.facilitator_view(self._participants))
             metadata = "[METADATA]\n" + "\n".join(metadata_parts)
 
             # Detect imbalance

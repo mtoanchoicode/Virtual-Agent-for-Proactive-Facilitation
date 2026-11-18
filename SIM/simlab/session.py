@@ -22,6 +22,7 @@ from simlab.scoring import LABELS
 FACILITATOR_VISUAL = {
     "full": "a 3D animated avatar shown in the call",
     "lite": "an audio-only voice with a simple pulsing visualizer (no avatar)",
+    "silent": "a 3D avatar that stays silent and never speaks or helps",
 }
 
 

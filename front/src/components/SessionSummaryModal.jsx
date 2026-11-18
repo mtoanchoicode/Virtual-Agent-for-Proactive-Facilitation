@@ -40,7 +40,7 @@ function download(report) {
 }
 
 export default function SessionSummaryModal() {
-  const { sessionReport: r, closeSessionReport } = useChat();
+  const { sessionReport: r, closeSessionReport, isAdmin, downloadAdminReport } = useChat();
   const t = useT();
   const lang = useLang();
   if (!r) return null;
@@ -85,7 +85,14 @@ export default function SessionSummaryModal() {
             <Metric
               label={t("sum.rankScore", "Final ranking deviation")}
               value={fr ? `${fr.score} / ${fr.maxScore}` : na}
-              sub={fr ? (fr.bothAgreed ? t("sum.agreed", "Both agreed") : t("sum.notAgreed", "Not agreed by both")) : null}
+              sub={
+                fr
+                  ? (fr.bothAgreed ? t("sum.agreed", "Both agreed") : t("sum.notAgreed", "Not agreed by both")) +
+                    (fr.unplacedCount
+                      ? ` · ${fr.unplacedCount} ${t("sum.incomplete", "card(s) not placed (scored worst case)")}`
+                      : "")
+                  : null
+              }
               hint={t("sum.rankHint", "Lower = closer to the Coast Guard ranking")}
             />
           </div>
@@ -108,7 +115,12 @@ export default function SessionSummaryModal() {
                 {fr.ranking.map((row) => (
                   <tr key={row.itemId} className="border-t border-slate-700">
                     <td className="py-1">{row.rank}</td>
-                    <td>{itemLabel(lang, row.itemId, row.item)}</td>
+                    <td>
+                      {itemLabel(lang, row.itemId, row.item)}
+                      {row.unplaced && (
+                        <span className="ml-1 text-xs text-amber-300">({t("sum.unplaced", "not placed")})</span>
+                      )}
+                    </td>
                     <td>{row.expertRank}</td>
                     <td className={`text-right ${row.deviation ? "text-amber-300" : "text-green-400"}`}>{row.deviation}</td>
                   </tr>
@@ -156,6 +168,11 @@ export default function SessionSummaryModal() {
         )}
 
         <div className="flex justify-end gap-2 pt-1">
+          {isAdmin && (
+            <button onClick={() => downloadAdminReport(r)} className="rounded-lg bg-green-600 hover:bg-green-700 px-4 py-2 text-sm font-semibold">
+              ⬇ {t("admin.downloadCsv", "Download CSV")}
+            </button>
+          )}
           <button onClick={() => download(r)} className="rounded-lg bg-blue-500 hover:bg-blue-600 px-4 py-2 text-sm font-semibold">
             ⬇ {t("sum.download", "Download data (JSON)")}
           </button>

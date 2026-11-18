@@ -11,6 +11,8 @@ import { MicTestModal } from "./components/MicTestModal";
 import { SimulatorPanel } from "./components/SimulatorPanel";
 import RankingBoard from "./components/RankingBoard";
 import SessionSummaryModal from "./components/SessionSummaryModal";
+import AdminPanel from "./components/AdminPanel";
+import AdminLeaveGuard from "./components/AdminLeaveGuard";
 import { useT, useLang, actionLabel } from "./i18n";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "";
@@ -789,6 +791,19 @@ function FacilitatorStatusBox({ logs, voiceSessionActive }) {
   );
 }
 
+// ── Facilitator modes ────────────────────────────────────────────────────────
+const MODE_OPTIONS = [
+  { id: "full",   icon: "✦", bg: "rgba(99,102,241,0.25)",  color: "#c7d2fe" },
+  { id: "lite",   icon: "⚡", bg: "rgba(251,191,36,0.2)",   color: "#fde68a" },
+  { id: "silent", icon: "🤫", bg: "rgba(148,163,184,0.25)", color: "#e2e8f0" },
+];
+
+function modeLabel(mode, t) {
+  if (mode === "lite") return t("hdr.lite", "Lite");
+  if (mode === "silent") return t("hdr.silent", "Silent");
+  return t("hdr.full", "Full");
+}
+
 // ── Action Badge ─────────────────────────────────────────────────────────────
 const ACTION_STYLES = {
   NO_ACTION:  { bg: "rgba(71,85,105,0.55)",  border: "rgba(100,116,139,0.35)", color: "#94a3b8",  icon: "—"  },
@@ -995,15 +1010,18 @@ function App() {
     voiceSessionActive,
     lastFacilitatorAction,
     facilitatorMode,
-    toggleFacilitatorMode,
+    setFacilitatorModeTo,
     modeLoading,
     language,
     languageLoading,
     toggleLanguage,
+    isAdmin,
+    adminReports,
   } = useChat();
   const t = useT();
 
   const [showJoinModal, setShowJoinModal] = useState(false);
+  const [showLeaveGuard, setShowLeaveGuard] = useState(false);
   const [showSimulator, setShowSimulator] = useState(false);
   const isJoined = !!sessionId;
 
@@ -1036,8 +1054,13 @@ function App() {
   );
 
   const handleLeave = useCallback(() => {
+    // Admin: never drop un-downloaded session data without asking.
+    if (isAdmin && adminReports.some((r) => !r.downloaded)) {
+      setShowLeaveGuard(true);
+      return;
+    }
     leaveRoom();
-  }, [leaveRoom, webcamStream]);
+  }, [leaveRoom, isAdmin, adminReports]);
 
   const participantSlots = [participants[0] ?? null, participants[1] ?? null];
 
@@ -1047,9 +1070,19 @@ function App() {
       <Leva hidden />
       <RankingBoard />
       <SessionSummaryModal />
+      <AdminPanel />
+      {showLeaveGuard && (
+        <AdminLeaveGuard
+          onCancel={() => setShowLeaveGuard(false)}
+          onLeave={() => {
+            setShowLeaveGuard(false);
+            leaveRoom();
+          }}
+        />
+      )}
 
       {showJoinModal && <JoinModal onJoin={handleJoin} />}
-      {showSimulator && isJoined && (
+      {showSimulator && isJoined && !isAdmin && (
         <SimulatorPanel onClose={() => setShowSimulator(false)} />
       )}
 
@@ -1099,7 +1132,19 @@ function App() {
                 : t("hdr.notInRoom", "Not in room")}
             </div>
 
-            {isJoined && myName && (
+            {isJoined && isAdmin && (
+              <div
+                className="rounded-full px-3 py-1.5 text-xs font-semibold text-amber-300"
+                style={{
+                  background: "rgba(251,191,36,0.1)",
+                  border: "1px solid rgba(251,191,36,0.35)",
+                }}
+              >
+                🛡 {t("admin.badge", "Admin observer (hidden)")}
+              </div>
+            )}
+
+            {isJoined && myName && !isAdmin && (
               <div
                 className="rounded-full px-3 py-1.5 text-xs font-semibold text-sky-300"
                 style={{
@@ -1145,7 +1190,30 @@ function App() {
             </button>
           </div>
 
-          {isJoined ? (
+          {isJoined && isAdmin ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Admin: read-only view of the room settings */}
+              <span
+                className="rounded-full px-4 py-2.5 text-sm font-semibold"
+                style={{ background: "rgba(148,163,184,0.08)", border: "1px solid rgba(148,163,184,0.18)", color: "#94a3b8" }}
+              >
+                🌐 {language === "vi" ? "VI · Tiếng Việt" : "EN · English"}
+              </span>
+              <span
+                className="rounded-full px-4 py-2.5 text-sm font-semibold"
+                style={{ background: "rgba(148,163,184,0.08)", border: "1px solid rgba(148,163,184,0.18)", color: "#94a3b8" }}
+              >
+                {modeLabel(facilitatorMode, t)}
+              </span>
+              <button
+                onClick={handleLeave}
+                className="rounded-full px-5 py-2.5 text-sm font-semibold text-red-300 transition-all hover:bg-red-500/20"
+                style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)" }}
+              >
+                {t("hdr.leave", "Leave Meeting")}
+              </button>
+            </div>
+          ) : isJoined ? (
             <div className="flex flex-wrap items-center gap-2">
               {/* Language toggle (EN / VI) — shared by the whole room */}
               <button
@@ -1165,53 +1233,39 @@ function App() {
                 🌐 {language === "vi" ? "VI · Tiếng Việt" : "EN · English"}
               </button>
 
-              {/* Mode toggle */}
-              <button
+              {/* Mode selector: Full / Lite / Silent */}
+              <div
                 id="mode-toggle-btn"
-                onClick={toggleFacilitatorMode}
-                disabled={modeLoading}
-                title={language === "vi" ? `${t("hdr.switchTo", "Switch to")} ${facilitatorMode === "full" ? t("hdr.lite", "Lite") : t("hdr.full", "Full")}` : `Switch to ${facilitatorMode === "full" ? "Lite" : "Full"} Mode`}
-                className="flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-semibold transition-all"
+                role="radiogroup"
+                className="flex items-center gap-0.5 rounded-full p-1"
                 style={{
-                  background: facilitatorMode === "lite"
-                    ? "rgba(251,191,36,0.15)"
-                    : "rgba(148,163,184,0.08)",
-                  border: facilitatorMode === "lite"
-                    ? "1px solid rgba(251,191,36,0.4)"
-                    : "1px solid rgba(148,163,184,0.18)",
-                  color: facilitatorMode === "lite" ? "#fde68a" : "#94a3b8",
+                  background: "rgba(148,163,184,0.08)",
+                  border: "1px solid rgba(148,163,184,0.18)",
                   opacity: modeLoading ? 0.6 : 1,
-                  cursor: modeLoading ? "not-allowed" : "pointer",
                 }}
               >
-                {/* Toggle track */}
-                <span
-                  style={{
-                    display: "inline-flex",
-                    width: "28px",
-                    height: "16px",
-                    borderRadius: "999px",
-                    background: facilitatorMode === "lite" ? "rgba(251,191,36,0.5)" : "rgba(100,116,139,0.35)",
-                    alignItems: "center",
-                    padding: "2px",
-                    transition: "background 0.25s",
-                    flexShrink: 0,
-                  }}
-                >
-                  <span
-                    style={{
-                      width: "12px",
-                      height: "12px",
-                      borderRadius: "50%",
-                      background: facilitatorMode === "lite" ? "#fbbf24" : "#64748b",
-                      transform: facilitatorMode === "lite" ? "translateX(12px)" : "translateX(0px)",
-                      transition: "transform 0.25s, background 0.25s",
-                      flexShrink: 0,
-                    }}
-                  />
-                </span>
-                {facilitatorMode === "lite" ? t("hdr.lite", "Lite") : t("hdr.full", "Full")}
-              </button>
+                {MODE_OPTIONS.map((m) => {
+                  const active = facilitatorMode === m.id;
+                  return (
+                    <button
+                      key={m.id}
+                      role="radio"
+                      aria-checked={active}
+                      onClick={() => setFacilitatorModeTo(m.id)}
+                      disabled={modeLoading}
+                      title={`${t("hdr.switchTo", "Switch to")} ${modeLabel(m.id, t)}`}
+                      className="rounded-full px-3 py-1.5 text-sm font-semibold transition-all"
+                      style={{
+                        background: active ? m.bg : "transparent",
+                        color: active ? m.color : "#94a3b8",
+                        cursor: modeLoading ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      {m.icon} {modeLabel(m.id, t)}
+                    </button>
+                  );
+                })}
+              </div>
 
               {/* Simulator toggle button */}
               <button

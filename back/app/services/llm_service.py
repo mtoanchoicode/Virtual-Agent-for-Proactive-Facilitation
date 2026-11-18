@@ -27,6 +27,18 @@ SCENARIO_ACTION_MENU = (
 )
 
 
+# How the facilitator may use the [BOARD] block. The board is awareness, not a trigger: cards waiting in
+# the pool are normal for most of the session and must not make it push the pair to the next item.
+BOARD_RULES = (
+    "Board rules: the [BOARD] block shows the shared ranking board for background awareness only.\n"
+    "- Cards still in the pool are normal and are NOT a reason to speak. Never choose NEXT_ITEM just because "
+    "cards are unplaced; base every action on the conversation.\n"
+    "- Never judge, praise, question or read out where a card was placed, and never suggest where a card should go.\n"
+    "- Use it only to avoid mistakes, e.g. don't call an item 'not discussed yet' when it is already placed, "
+    "and only name pool items when you invite them to move on."
+)
+
+
 def _localize(messages: List[dict]) -> List[dict]:
     """In Vietnamese, append the language directive (and Vietnamese item names) to the system prompt.
     In English the messages are returned untouched."""
@@ -156,7 +168,8 @@ class ConversationManager:
                 "- 'Ok sextant is six.' 'Fine.' with items still unranked -> NEXT_ITEM\n"
                 "- 'Just tell us the right order.' -> REDIRECT\n\n"
                 "Rules: one sentence, under 20 words, one question at a time, never repeat a question you already asked, "
-                "never state which item matters more, never mention rankings you were not told.\n\n"
+                "never state which item matters more.\n\n"
+                f"{BOARD_RULES}\n\n"
                 "Reply ONLY in this exact format:\n"
                 "ACTION: <ACTION>\n"
                 "TEXT: <your spoken sentence>"
@@ -194,10 +207,11 @@ class ConversationManager:
         messages = [{"role": "system", "content": system_content}] + self.history[-PROMPT_HISTORY_LEN:]
         return _localize(messages)
 
-    def get_proactive_prompt(self, kind: str, elapsed_sec: float) -> List[dict]:
+    def get_proactive_prompt(self, kind: str, elapsed_sec: float, board_view: str = "") -> List[dict]:
         """Prompt for facilitator-initiated speech that is not triggered by a user turn.
 
         kind: OPEN (kickoff), NUDGE (both quiet), TIME_CHECK, WRAP_UP.
+        board_view: Board.facilitator_view() text (scenario only).
         """
         remaining_min = max(1, round((scenario.TIME_LIMIT_SEC - elapsed_sec) / 60))
         instructions = {
@@ -212,13 +226,13 @@ class ConversationManager:
                 "next and why. Do not suggest what is important and do not repeat a question you already asked."
             ),
             "TIME_CHECK": (
-                f"Give a time check. Start your sentence with 'About {remaining_min} minutes left.' Then, from the "
-                "conversation, say how many of the 6 items still have no agreed rank and encourage a steady pace. "
+                f"Give a time check. Start your sentence with 'About {remaining_min} minutes left.' Then, using the "
+                "[BOARD] block, say how many cards are still not placed and encourage a steady pace. "
                 "Do not ask a question."
             ),
             "WRAP_UP": (
-                "Time is up. Say: 'Time is up. Finish placing your cards and agree on the board.' You cannot see "
-                "their board, so do not list, read back or guess any ranks. Do not add opinions or questions."
+                "Time is up. Say: 'Time is up. Finish placing your cards and agree on the board.' Do not list, "
+                "read back or comment on any ranks. Do not add opinions or questions."
             ),
         }[kind]
         system_content = (
@@ -227,6 +241,8 @@ class ConversationManager:
             f"{instructions}\n"
             "Speak naturally in at most two short sentences (under 35 words). Reply with the spoken text only."
         )
+        if board_view:
+            system_content += f"\n\n{BOARD_RULES}\n\n{board_view}"
         return _localize([{"role": "system", "content": system_content}] + self.history[-PROMPT_HISTORY_LEN:])
 
     def get_lite_prompt(self) -> List[dict]:

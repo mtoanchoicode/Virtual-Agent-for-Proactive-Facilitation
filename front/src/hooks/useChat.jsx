@@ -8,6 +8,7 @@ import {
   useCallback,
 } from "react";
 import { setLang as setI18nLang } from "../i18n";
+import { downloadReportCsv } from "../utils/reportCsv";
 
 const isSecure = window.location.protocol === "https:";
 const wsProtocol = isSecure ? "wss" : "ws";
@@ -19,9 +20,48 @@ const WS_URL = `${wsHost}/ws/voice`;
 
 const ChatContext = createContext();
 
+// Names that open the hidden admin/observer portal (must match ADMIN_NAMES on the backend).
+const ADMIN_NAMES = (import.meta.env.VITE_ADMIN_NAMES || "Minhtoan2005")
+  .split(",")
+  .map((n) => n.trim().toLowerCase())
+  .filter(Boolean);
+export const isAdminName = (name) => ADMIN_NAMES.includes((name || "").trim().toLowerCase());
+
 const SAMPLE_RATE = 16000;
 const CHUNK_SIZE = 4096;
 const WARMUP_MS = 1500;
+
+// Peer-to-peer webcam: small face tiles don't need 720p. Lower capture + a bitrate cap cut the data
+// sent through the TURN relay by ~7x (720p uncapped ≈ 1.5–2.5 Mbps per person; this ≈ 0.3 Mbps).
+const VIDEO_CONSTRAINTS = {
+  facingMode: "user",
+  width: { ideal: 640 },
+  height: { ideal: 360 },
+  frameRate: { ideal: 15, max: 15 },
+};
+const VIDEO_MAX_BITRATE = 300_000; // bits per second, per outgoing video stream
+const VIDEO_MAX_FRAMERATE = 15;
+
+/** Apply the bitrate / frame-rate cap to every outgoing video sender of a peer connection. */
+function capVideoSenders(pc) {
+  pc.getSenders()
+    .filter((s) => s.track?.kind === "video")
+    .forEach((sender) => {
+      const params = sender.getParameters();
+      if (!params.encodings || params.encodings.length === 0) return; // not negotiated yet
+      let changed = false;
+      params.encodings.forEach((enc) => {
+        if (enc.maxBitrate !== VIDEO_MAX_BITRATE || enc.maxFramerate !== VIDEO_MAX_FRAMERATE) {
+          enc.maxBitrate = VIDEO_MAX_BITRATE;
+          enc.maxFramerate = VIDEO_MAX_FRAMERATE;
+          changed = true;
+        }
+      });
+      if (changed) {
+        sender.setParameters(params).catch((err) => console.warn("[WebRTC] Could not cap video bitrate:", err));
+      }
+    });
+}
 
 const ICE_SERVERS = {
   iceServers: [
@@ -68,6 +108,56 @@ export const ChatProvider = ({ children }) => {
   const [timeLimitSec, setTimeLimitSec] = useState(300);
   const [sessionStartedAt, setSessionStartedAt] = useState(null);
   const [sessionReport, setSessionReport] = useState(null); // end-of-session summary from the server
+  // ── Admin observer ──────────────────────────────────────────────────────
+  // Admin = hidden observer: sees/hears everything, controls nothing. Finished-session reports are kept
+  // only here (browser memory) until the admin leaves.
+  const [isAdmin, setIsAdmin] = useState(false);
+  const isAdminRef = useRef(false);
+  const [adminReports, setAdminReports] = useState([]); // [{ report, receivedAt, downloaded }]
+
+  const adminReportsRef = useRef([]);
+  useEffect(() => {
+    adminReportsRef.current = adminReports;
+  }, [adminReports]);
+
+  const markDownloaded = useCallback((ids) => {
+    setAdminReports((prev) =>
+      prev.map((r) => (ids.includes(r.report.meta.sessionId) ? { ...r, downloaded: true } : r)),
+    );
+  }, []);
+
+  // Download one session's CSV. Works for any report (e.g. the summary modal) — it is marked as
+  // downloaded in the admin list if it is there.
+  const downloadAdminReport = useCallback((reportOrId) => {
+    const report =
+      typeof reportOrId === "string"
+        ? adminReportsRef.current.find((r) => r.report.meta.sessionId === reportOrId)?.report
+        : reportOrId;
+    if (!report) return;
+    downloadReportCsv(report);
+    markDownloaded([report.meta.sessionId]);
+  }, [markDownloaded]);
+
+  const downloadAllAdminReports = useCallback(() => {
+    const pending = adminReportsRef.current.filter((r) => !r.downloaded);
+    // Small stagger: some browsers block several downloads fired in the same tick.
+    pending.forEach((r, i) => setTimeout(() => downloadReportCsv(r.report), i * 400));
+    markDownloaded(pending.map((r) => r.report.meta.sessionId));
+    return pending.length;
+  }, [markDownloaded]);
+
+  // Warn before the tab is closed / refreshed while some session data has not been downloaded.
+  const hasPendingReports = isAdmin && adminReports.some((r) => !r.downloaded);
+  useEffect(() => {
+    if (!hasPendingReports) return;
+    const onBeforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = "";
+      return "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [hasPendingReports]);
 
   useEffect(() => {
     fetch(`${BACKEND_URL}/room/time-limit`)
@@ -143,8 +233,8 @@ export const ChatProvider = ({ children }) => {
       .catch(() => { });
   }, []);
 
-  const toggleFacilitatorMode = useCallback(async () => {
-    const next = facilitatorMode === "full" ? "lite" : "full";
+  const setFacilitatorModeTo = useCallback(async (next) => {
+    if (next === facilitatorMode) return;
     setModeLoading(true);
     try {
       const res = await fetch(`${BACKEND_URL}/room/mode`, {
@@ -357,6 +447,12 @@ export const ChatProvider = ({ children }) => {
       console.log(`[WebRTC] ICE connection state with ${remoteSessionId}:`, pc.iceConnectionState);
     };
 
+    // Every offer/answer round (first call, answering, webcam turned on later) ends in "stable":
+    // re-apply the video cap then, so it covers both the caller and the answerer.
+    pc.onsignalingstatechange = () => {
+      if (pc.signalingState === "stable") capVideoSenders(pc);
+    };
+
     return pc;
   }, []);
 
@@ -443,11 +539,7 @@ export const ChatProvider = ({ children }) => {
     } else {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: "user",
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
+          video: VIDEO_CONSTRAINTS,
           audio: false,
         });
         setWebcamStream(stream);
@@ -490,8 +582,16 @@ export const ChatProvider = ({ children }) => {
     async (data) => {
       switch (data.type) {
         case "joined":
+          isAdminRef.current = data.role === "admin";
+          setIsAdmin(data.role === "admin");
           setSessionId(data.sessionId);
           setParticipants(data.participants);
+          if (data.mode) setFacilitatorMode(data.mode);
+          if (data.language) applyLanguage(data.language);
+          // A participant joining after the admin streams its camera/mic to the (hidden) admin.
+          if (data.role === "participant" && Array.isArray(data.observers)) {
+            for (const obsId of data.observers) await callPeer(obsId);
+          }
           if (data.timeLimitSec) setTimeLimitSec(data.timeLimitSec);
           if (data.voiceSessionActive) {
             setVoiceSessionActive(true);
@@ -501,6 +601,8 @@ export const ChatProvider = ({ children }) => {
           break;
 
         case "left":
+          isAdminRef.current = false;
+          setIsAdmin(false);
           setSessionId(null);
           setMyName(null);
           setParticipants([]);
@@ -547,6 +649,18 @@ export const ChatProvider = ({ children }) => {
               delete next[data.sessionId];
               return next;
             });
+          }
+          break;
+
+        // Hidden admin joined/left: send it our camera + mic (it sends nothing back, so it never shows up).
+        case "observer_joined":
+          if (data.sessionId && !isAdminRef.current) await callPeer(data.sessionId);
+          break;
+
+        case "observer_left":
+          if (data.sessionId) {
+            peerConnectionsRef.current[data.sessionId]?.close();
+            delete peerConnectionsRef.current[data.sessionId];
           }
           break;
 
@@ -640,7 +754,7 @@ export const ChatProvider = ({ children }) => {
           setSessionStartedAt(Date.now() - (data.elapsedSec ?? 0) * 1000);
           setParticipants(data.participants);
           setRoomState("idle");
-          startAudioStreaming();
+          if (!isAdminRef.current) startAudioStreaming();
           break;
 
         case "voice_session_ended":
@@ -649,11 +763,21 @@ export const ChatProvider = ({ children }) => {
           setLocalVoiceStreaming(false);
           setRoomState("idle");
           stopAudioStreaming();
-          if (data.report) setSessionReport(data.report);
+          if (data.report) {
+            setSessionReport(data.report);
+            if (isAdminRef.current) {
+              setAdminReports((prev) =>
+                prev.some((r) => r.report.meta.sessionId === data.report.meta.sessionId)
+                  ? prev
+                  : [...prev, { report: data.report, receivedAt: Date.now(), downloaded: false }],
+              );
+            }
+          }
           break;
 
         case "voice_started":
           setVoiceSessionActive(true);
+          if (isAdminRef.current) break;
           setLocalVoiceStreaming(true);
           startAudioStreaming();
           break;
@@ -782,7 +906,7 @@ export const ChatProvider = ({ children }) => {
           break;
       }
     },
-    [addMessages, callPeer, createPeerConnection, processStreamQueue, base64ToArrayBuffer],
+    [addMessages, callPeer, createPeerConnection, processStreamQueue, base64ToArrayBuffer, applyLanguage],
   );
 
   // ── Audio streaming ───────────────────────────────────────────────────
@@ -842,7 +966,9 @@ export const ChatProvider = ({ children }) => {
       setMyName(trimmed);
 
       try {
-        if (!peerAudioStreamRef.current) {
+        if (isAdminName(trimmed)) {
+          // Admin observer never sends audio/video: don't ask for the microphone.
+        } else if (!peerAudioStreamRef.current) {
           peerAudioStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
           console.log("[WebRTC] Acquired local audio stream", peerAudioStreamRef.current.getAudioTracks().length);
         } else {
@@ -891,6 +1017,10 @@ export const ChatProvider = ({ children }) => {
     setFacilitatorLogs([]);
     setLastFacilitatorAction(null);
     setBoard(null);
+    isAdminRef.current = false;
+    setIsAdmin(false);
+    setAdminReports([]); // admin confirmed leaving: in-memory session data is discarded
+    setSessionReport(null);
     wsRef.current?.close();
   }, [stopAudioStreaming]);
 
@@ -902,7 +1032,10 @@ export const ChatProvider = ({ children }) => {
   }, []);
   const boardDragStart = useCallback((itemId) => sendBoard({ type: "board_drag_start", itemId }), [sendBoard]);
   const boardDragEnd = useCallback((itemId) => sendBoard({ type: "board_drag_end", itemId }), [sendBoard]);
+  // Place a card into rank slot toIndex (0-based), from the pool or from another slot.
   const boardMove = useCallback((itemId, toIndex) => sendBoard({ type: "board_move", itemId, toIndex }), [sendBoard]);
+  // Send a placed card back to the pool of undecided items.
+  const boardUnplace = useCallback((itemId) => sendBoard({ type: "board_unplace", itemId }), [sendBoard]);
   const boardAgree = useCallback((agreed) => sendBoard({ type: "board_agree", agreed }), [sendBoard]);
 
   const toggleMic = useCallback(() => {
@@ -964,6 +1097,10 @@ export const ChatProvider = ({ children }) => {
         sessionStartedAt,
         sessionReport,
         closeSessionReport: () => setSessionReport(null),
+        isAdmin,
+        adminReports,
+        downloadAdminReport,
+        downloadAllAdminReports,
         setTimeLimitMinutes,
         localVoiceStreaming,
         startVoiceSession,
@@ -979,7 +1116,7 @@ export const ChatProvider = ({ children }) => {
         facilitatorLogs,
         lastFacilitatorAction,
         facilitatorMode,
-        toggleFacilitatorMode,
+        setFacilitatorModeTo,
         modeLoading,
         language,
         languageLoading,
@@ -988,6 +1125,7 @@ export const ChatProvider = ({ children }) => {
         boardDragStart,
         boardDragEnd,
         boardMove,
+        boardUnplace,
         boardAgree,
       }}
     >

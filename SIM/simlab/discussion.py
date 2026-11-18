@@ -39,7 +39,9 @@ class Discussion:
         self.utterances: List[dict] = []          # participant ground truth: {role, name, start, end, text}
         self.decision_log: List[dict] = []
         self.gen_wait: List[List[float]] = []
-        self.board_order: List[str] = [it for it in LABELS]
+        # Rank slots (label or None = empty) and the pool of undecided cards, as last sent by the server.
+        self.board_order: List[Optional[str]] = [None] * len(LABELS)
+        self.board_pool: List[str] = list(LABELS)
         self.agreed_sessions: List[str] = []
         self.all_agreed_at: Optional[float] = None
         self.server_items: List[dict] = []
@@ -74,7 +76,9 @@ class Discussion:
             self.fac.on_interrupt(now)
         elif kind == "board_state":
             self.server_items = data.get("items", self.server_items)
-            self.board_order = [LABEL_BY_ID.get(i, i) for i in data.get("order", [])] or self.board_order
+            if "slots" in data:
+                self.board_order = [LABEL_BY_ID.get(i, i) if i else None for i in data["slots"]]
+                self.board_pool = [LABEL_BY_ID.get(i, i) for i in data.get("pool", [])]
             self.agreed_sessions = data.get("agreed", [])
             if data.get("allAgreed") and self.all_agreed_at is None:
                 self.all_agreed_at = now
@@ -111,6 +115,7 @@ class Discussion:
                  f"{'You' if x['role'] == role else x['who']}: {x['text']}" for x in self.transcript]
         return {
             "board": list(self.board_order),
+            "pool": list(self.board_pool),
             "partner_agreed": partner_sid in self.agreed_sessions,
             "transcript": lines,
             "elapsed": _mmss(elapsed),

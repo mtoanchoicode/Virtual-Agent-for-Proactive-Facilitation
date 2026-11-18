@@ -30,8 +30,8 @@ async def get_mode():
 async def set_mode(request: Request):
     body = await request.json()
     new_mode = body.get("mode", "full")
-    if new_mode not in ("full", "lite"):
-        return {"error": "Invalid mode. Must be 'full' or 'lite'."}
+    if new_mode not in ("full", "lite", "silent"):
+        return {"error": "Invalid mode. Must be 'full', 'lite' or 'silent'."}
     room.mode = new_mode
     room.board.mode = new_mode
     await room.broadcast({"type": "mode_changed", "mode": new_mode})

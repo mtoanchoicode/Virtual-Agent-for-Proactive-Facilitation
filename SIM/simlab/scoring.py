@@ -3,7 +3,8 @@
 The key lives ONLY here. It is never put into an agent prompt and never sent to the backend;
 it is used after the session to score rankings.
 """
-from typing import Dict, List
+from itertools import permutations
+from typing import Dict, List, Optional
 
 # Same ids and labels as back/app/services/scenario.py BOARD_ITEMS (checked at runtime against
 # the board the server sends).
@@ -40,9 +41,26 @@ BANDS = [
 ]
 
 
-def deviation(ranking: List[str]) -> int:
-    """Sum over items of |rank in `ranking` - expert rank|. `ranking` lists labels, best first."""
-    return sum(abs(i + 1 - EXPERT_RANK[label]) for i, label in enumerate(ranking))
+def worst_case_fill(ranking: List[Optional[str]]) -> List[str]:
+    """Fill empty slots (None) with the labels that are missing, in the arrangement with the LARGEST
+    deviation, so an unfinished board never scores better than a finished one could. Same rule as
+    back/app/core/session_report.py worst_case_fill."""
+    empty = [i for i, label in enumerate(ranking) if not label]
+    if not empty:
+        return list(ranking)
+    missing = [label for label in LABELS if label not in ranking]
+    best = max(permutations(missing, len(empty)),
+               key=lambda perm: sum(abs(i + 1 - EXPERT_RANK[l]) for i, l in zip(empty, perm)))
+    filled = list(ranking)
+    for i, label in zip(empty, best):
+        filled[i] = label
+    return filled
+
+
+def deviation(ranking: List[Optional[str]]) -> int:
+    """Sum over items of |rank in `ranking` - expert rank|. `ranking` lists labels, best first;
+    None = empty slot (scored worst case)."""
+    return sum(abs(i + 1 - EXPERT_RANK[label]) for i, label in enumerate(worst_case_fill(ranking)))
 
 
 def band(score: float) -> str:

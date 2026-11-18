@@ -132,13 +132,16 @@ class ParticipantAgent:
             "- You may stay silent (speak=false) to think or to let your partner talk; pauses of a few seconds "
             "are normal in a real conversation.\n"
             "- Board moves: only place a card at a rank you and your partner agreed on out loud (or that you "
-            "announce in the same turn). Use exact item names. Moves are applied in order.\n"
-            "- Set press_agree=true only when you accept the WHOLE board ranking as final."
+            "announce in the same turn). Use exact item names. Moves are applied in order. Placing a card on an "
+            "occupied rank swaps it with that card if yours was already placed, or sends that card back to the "
+            "pool if yours came from the pool.\n"
+            "- Set press_agree=true only when every card is placed and you accept the WHOLE board ranking as final."
         )
 
     def _perceive(self, state: DecisionState) -> DecisionState:
         c = state["context"]
-        board = "\n".join(f"{i + 1}. {label}" for i, label in enumerate(c["board"]))
+        board = "\n".join(f"{i + 1}. {label or '(empty)'}" for i, label in enumerate(c["board"]))
+        pool = ", ".join(c.get("pool") or []) or "none, every card is placed"
         lines = "\n".join(c["transcript"][-120:]) or "(nobody has spoken yet)"
         phase = (
             "TIME IS UP. Finish placing the cards and press agree if you accept the board; speak only if needed."
@@ -147,7 +150,8 @@ class ParticipantAgent:
         )
         prompt = (
             f"TIME: {phase}\n\n"
-            f"SHARED BOARD (current order){' - your partner has pressed agree' if c['partner_agreed'] else ''}:\n{board}\n\n"
+            f"SHARED BOARD (rank slots){' - your partner has pressed agree' if c['partner_agreed'] else ''}:\n{board}\n"
+            f"Not placed yet (undecided pool): {pool}\n\n"
             f"YOUR OWN RANKING BEFORE THE DISCUSSION (private notes):\n"
             + ", ".join(f"{i + 1}. {l}" for i, l in enumerate(self.private_ranking))
             + f"\n\nCONVERSATION SO FAR:\n{lines}\n\n"

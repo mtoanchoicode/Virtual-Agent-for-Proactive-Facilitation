@@ -26,6 +26,25 @@ EXPERT_RANK: Dict[str, int] = {
 MAX_SCORE = 18  # fully reversed ranking of 6 items
 
 
+def worst_case_fill(slots: List[Optional[str]], pool: List[str]) -> List[str]:
+    """Complete a partly filled board for scoring: put the unplaced cards into the empty slots in the
+    arrangement that gives the LARGEST deviation. An unfinished board therefore never scores better than
+    it could have, and the total stays within 0..MAX_SCORE."""
+    from itertools import permutations
+    empty = [i for i, iid in enumerate(slots) if not iid]
+    if not empty:
+        return list(slots)
+    best, best_dev = None, -1
+    for perm in permutations(pool, len(empty)):
+        dev = sum(abs(i + 1 - EXPERT_RANK.get(iid, i + 1)) for i, iid in zip(empty, perm))
+        if dev > best_dev:
+            best, best_dev = perm, dev
+    filled = list(slots)
+    for i, iid in zip(empty, best):
+        filled[i] = iid
+    return filled
+
+
 def _iso(epoch: float) -> str:
     return datetime.fromtimestamp(epoch, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
@@ -195,26 +214,39 @@ class SessionRecorder:
         final_ranking = None
         if board_data:
             labels = {it["id"]: it["label"] for it in board_data["items"]}
+            slots = board_data["slots"]
+            unplaced = set(board_data.get("pool", []))
             rows = []
-            for i, iid in enumerate(board_data["order"]):
+            for i, iid in enumerate(worst_case_fill(slots, board_data.get("pool", []))):
                 exp = EXPERT_RANK.get(iid)
                 rows.append({
                     "rank": i + 1, "itemId": iid, "item": labels.get(iid, iid), "expertRank": exp,
                     "deviation": abs(i + 1 - exp) if exp else None,
+                    "unplaced": iid in unplaced,  # True = left in the pool; "rank" assigned by worst_case_fill
+                    "placedRank": None if iid in unplaced else i + 1,  # what the pair actually chose
                 })
             final_ranking = {
                 "ranking": rows,
                 "score": sum(r["deviation"] for r in rows if r["deviation"] is not None),
                 "maxScore": MAX_SCORE,
                 "bothAgreed": bool(board_data.get("allAgreed")),
-                "note": "Score = sum over items of |pair rank - Coast Guard rank|; 0 = identical to the reference.",
+                "complete": not unplaced,
+                "unplacedCount": len(unplaced),
+                "boardVersion": "pool-slots-v2",
+                # The board exactly as it was when the session ended (null = empty rank).
+                "boardAtEnd": {
+                    "slots": [labels.get(iid, iid) if iid else None for iid in slots],
+                    "pool": [labels.get(iid, iid) for iid in board_data.get("pool", [])],
+                },
+                "note": "Score = sum over items of |pair rank - Coast Guard rank|; 0 = identical to the reference. "
+                        "Cards left in the pool are put into the empty ranks in the worst-case arrangement.",
             }
 
         fac = [u for u in self.utterances if u["role"] == "facilitator"]
         actions: Dict[str, int] = {}
         for u in fac:
             actions[u.get("action") or "UNKNOWN"] = actions.get(u.get("action") or "UNKNOWN", 0) + 1
-        moves = [e for e in board_events if e.get("event") == "move"]
+        moves = [e for e in board_events if e.get("event") in ("place", "unplace", "move")]
         moves_by: Dict[str, int] = {}
         for e in moves:
             moves_by[e["by"]] = moves_by.get(e["by"], 0) + 1

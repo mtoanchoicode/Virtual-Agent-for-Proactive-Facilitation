@@ -143,7 +143,8 @@ def compute(rec: dict) -> Tuple[dict, List[dict]]:
         "mean_individual_score": mean_indiv,
         "collaborative_improvement": round(mean_indiv - final_score, 2),
         "task_completed": bool(completed_at), "completion_time_sec": round(completed_at - t0, 1) if completed_at else None,
-        "final_ranking": " | ".join(final),
+        "final_ranking": " | ".join(label or "(empty)" for label in final),
+        "unplaced_cards": sum(1 for label in final if not label),
         # agent behaviour
         "facilitator_utterances": len(spoken_fac),
         "facilitator_overlapping_utterances": overlapped,

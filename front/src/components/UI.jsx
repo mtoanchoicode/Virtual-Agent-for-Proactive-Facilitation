@@ -21,7 +21,7 @@ const ROOM_STATE_STYLES = {
 
 // ── Session timer: always visible. Idle = total length; running = countdown (resets on stop).
 // Hover to reveal −/+ (1–20 min); the new length applies to the whole room immediately.
-function SessionTimer({ limitSec, startedAt, onChangeMinutes }) {
+function SessionTimer({ limitSec, startedAt, onChangeMinutes, readOnly = false }) {
   const t = useT();
   const running = startedAt != null;
   const [now, setNow] = useState(Date.now());
@@ -46,9 +46,9 @@ function SessionTimer({ limitSec, startedAt, onChangeMinutes }) {
     <div
       className="group pointer-events-auto absolute left-1/2 top-3 -translate-x-1/2 flex items-center gap-2 rounded-full px-3 py-1.5 backdrop-blur-md"
       style={{ background: "rgba(15,23,42,0.85)", border: `1px solid ${color}55` }}
-      title={t("ui.timerHint", "Hover and use − / + to set the session length (1–20 min)")}
+      title={readOnly ? undefined : t("ui.timerHint", "Hover and use − / + to set the session length (1–20 min)")}
     >
-      <button
+      {!readOnly && <button
         type="button"
         className="opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
         style={stepBtn(minutes <= 1)}
@@ -57,7 +57,7 @@ function SessionTimer({ limitSec, startedAt, onChangeMinutes }) {
         aria-label={t("ui.timerMinus", "Decrease session length")}
       >
         −
-      </button>
+      </button>}
       <span style={{ fontSize: 14 }}>⏱</span>
       <span style={{ color, fontWeight: 700, fontSize: 18, fontVariantNumeric: "tabular-nums", letterSpacing: "0.05em" }}>
         {mm}:{ss}
@@ -67,7 +67,7 @@ function SessionTimer({ limitSec, startedAt, onChangeMinutes }) {
           {t("ui.timeUp", "Time's up")}
         </span>
       )}
-      <button
+      {!readOnly && <button
         type="button"
         className="opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
         style={stepBtn(minutes >= 20)}
@@ -76,7 +76,7 @@ function SessionTimer({ limitSec, startedAt, onChangeMinutes }) {
         aria-label={t("ui.timerPlus", "Increase session length")}
       >
         +
-      </button>
+      </button>}
     </div>
   );
 }
@@ -114,11 +114,16 @@ export const UI = ({ hidden, ...props }) => {
     roomState,
     turnTranscripts,
     modelTranscripts,
+    isAdmin,
+    facilitatorMode,
   } = useChat();
 
   const { btn: btnColor, label: stateLabelEn, key: stateKey } =
     ROOM_STATE_STYLES[roomState] ?? ROOM_STATE_STYLES.idle;
-  const stateLabel = t(stateKey, stateLabelEn);
+  // Silent mode has no AI response — the processing phase is only STT.
+  const stateLabel = facilitatorMode === "silent" && roomState === "processing"
+    ? t("ui.transcribing", "Transcribing…")
+    : t(stateKey, stateLabelEn);
   const isDisabled = roomState === "processing" || roomState === "speaking";
 
   const sendMessage = () => {
@@ -137,6 +142,7 @@ export const UI = ({ hidden, ...props }) => {
         limitSec={timeLimitSec}
         startedAt={voiceSessionActive ? sessionStartedAt : null}
         onChangeMinutes={setTimeLimitMinutes}
+        readOnly={isAdmin}
       />
 
       {/* ── Top-left: Transcript panel ─────────────────────────────────── */}
@@ -230,8 +236,8 @@ export const UI = ({ hidden, ...props }) => {
           </div>
         )}
 
-        {/* Voice session button — starts/stops the ROOM-LEVEL session */}
-        {sessionId && (
+        {/* Voice session button — starts/stops the ROOM-LEVEL session (not for the admin observer) */}
+        {sessionId && !isAdmin && (
           <button
             onClick={() =>
               voiceSessionActive ? stopVoiceSession() : startVoiceSession()
@@ -281,7 +287,7 @@ export const UI = ({ hidden, ...props }) => {
         )}
 
         {/* Mic mute toggle (per-participant, only during active voice session) */}
-        {sessionId && voiceSessionActive && (
+        {sessionId && voiceSessionActive && !isAdmin && (
           <button
             onClick={toggleMic}
             className={`pointer-events-auto ${micActive
