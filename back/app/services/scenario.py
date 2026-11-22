@@ -50,12 +50,10 @@ ITEMS = [label for _, label in _SUBSET]
 # Cards for the shared ranking board: [{"id": "...", "label": "..."}], in the fixed starting order.
 BOARD_ITEMS = [{"id": i, "label": label} for i, label in _SUBSET]
 
-# Vocabulary hint for speech-to-text (helps with words like "sextant").
-STT_HINT = (
-    "Two crew members in a life raft in the South Pacific ranking survival items. Items: sextant "
-    "(navigation instrument), shaving mirror, 25 liter container of water, "
-    "case of army rations, oil petrol mixture, opaque plastic sheeting. Ranking numbers one to six."
-)
+# Vocabulary hint for speech-to-text (helps with words like "sextant"). Kept to a bare word list on
+# purpose: on noisy or near-silent audio the model can copy its prompt back as the transcript, and a full
+# sentence (or the items listed like a ranking) is far easier to copy than a few words.
+STT_HINT = "sextant, shaving mirror, water container, army rations, oil petrol mixture, opaque plastic sheeting"
 
 def minutes_text() -> str:
     m = TIME_LIMIT_SEC // 60
@@ -111,11 +109,8 @@ ITEMS_VI = [
     "Gương cạo râu",
 ]
 
-STT_HINT_VI = (
-    "Hai thuyền viên trên bè cứu sinh ở Nam Thái Bình Dương đang xếp hạng các vật dụng sinh tồn: "
-    "kính lục phân, gương cạo râu, thùng nước 25 lít, lương khô quân đội, "
-    "hỗn hợp dầu xăng, tấm nhựa đục. Xếp hạng từ một đến sáu."
-)
+# Bare word list, same reason as STT_HINT. "sextant" is kept because people often say it in English.
+STT_HINT_VI = "kính lục phân, sextant, gương cạo râu, thùng nước, lương khô quân đội, hỗn hợp dầu xăng, tấm nhựa đục"
 
 SCENARIO_BRIEF_VI = (
     "KỊCH BẢN (tiếng Việt): 'Lạc giữa biển'. Hai người tham gia là thuyền viên của một du thuyền bị cháy và đang chìm "
