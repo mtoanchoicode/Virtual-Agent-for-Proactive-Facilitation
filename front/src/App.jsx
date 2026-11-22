@@ -804,6 +804,44 @@ function modeLabel(mode, t) {
   return t("hdr.full", "Full");
 }
 
+// Full / Lite / Silent segmented control. The mode is shared by the whole room (backend broadcasts mode_changed).
+function ModeSelector({ mode, loading, onChange, t }) {
+  return (
+    <div
+      id="mode-toggle-btn"
+      role="radiogroup"
+      className="flex items-center gap-0.5 rounded-full p-1"
+      style={{
+        background: "rgba(148,163,184,0.08)",
+        border: "1px solid rgba(148,163,184,0.18)",
+        opacity: loading ? 0.6 : 1,
+      }}
+    >
+      {MODE_OPTIONS.map((m) => {
+        const active = mode === m.id;
+        return (
+          <button
+            key={m.id}
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(m.id)}
+            disabled={loading}
+            title={`${t("hdr.switchTo", "Switch to")} ${modeLabel(m.id, t)}`}
+            className="rounded-full px-3 py-1.5 text-sm font-semibold transition-all"
+            style={{
+              background: active ? m.bg : "transparent",
+              color: active ? m.color : "#94a3b8",
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
+          >
+            {m.icon} {modeLabel(m.id, t)}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Action Badge ─────────────────────────────────────────────────────────────
 const ACTION_STYLES = {
   NO_ACTION:  { bg: "rgba(71,85,105,0.55)",  border: "rgba(100,116,139,0.35)", color: "#94a3b8",  icon: "—"  },
@@ -1192,19 +1230,14 @@ function App() {
 
           {isJoined && isAdmin ? (
             <div className="flex flex-wrap items-center gap-2">
-              {/* Admin: read-only view of the room settings */}
+              {/* Admin: language is read-only; the facilitator mode can be switched */}
               <span
                 className="rounded-full px-4 py-2.5 text-sm font-semibold"
                 style={{ background: "rgba(148,163,184,0.08)", border: "1px solid rgba(148,163,184,0.18)", color: "#94a3b8" }}
               >
                 🌐 {language === "vi" ? "VI · Tiếng Việt" : "EN · English"}
               </span>
-              <span
-                className="rounded-full px-4 py-2.5 text-sm font-semibold"
-                style={{ background: "rgba(148,163,184,0.08)", border: "1px solid rgba(148,163,184,0.18)", color: "#94a3b8" }}
-              >
-                {modeLabel(facilitatorMode, t)}
-              </span>
+              <ModeSelector mode={facilitatorMode} loading={modeLoading} onChange={setFacilitatorModeTo} t={t} />
               <button
                 onClick={handleLeave}
                 className="rounded-full px-5 py-2.5 text-sm font-semibold text-red-300 transition-all hover:bg-red-500/20"
@@ -1234,38 +1267,7 @@ function App() {
               </button>
 
               {/* Mode selector: Full / Lite / Silent */}
-              <div
-                id="mode-toggle-btn"
-                role="radiogroup"
-                className="flex items-center gap-0.5 rounded-full p-1"
-                style={{
-                  background: "rgba(148,163,184,0.08)",
-                  border: "1px solid rgba(148,163,184,0.18)",
-                  opacity: modeLoading ? 0.6 : 1,
-                }}
-              >
-                {MODE_OPTIONS.map((m) => {
-                  const active = facilitatorMode === m.id;
-                  return (
-                    <button
-                      key={m.id}
-                      role="radio"
-                      aria-checked={active}
-                      onClick={() => setFacilitatorModeTo(m.id)}
-                      disabled={modeLoading}
-                      title={`${t("hdr.switchTo", "Switch to")} ${modeLabel(m.id, t)}`}
-                      className="rounded-full px-3 py-1.5 text-sm font-semibold transition-all"
-                      style={{
-                        background: active ? m.bg : "transparent",
-                        color: active ? m.color : "#94a3b8",
-                        cursor: modeLoading ? "not-allowed" : "pointer",
-                      }}
-                    >
-                      {m.icon} {modeLabel(m.id, t)}
-                    </button>
-                  );
-                })}
-              </div>
+              <ModeSelector mode={facilitatorMode} loading={modeLoading} onChange={setFacilitatorModeTo} t={t} />
 
               {/* Simulator toggle button */}
               <button

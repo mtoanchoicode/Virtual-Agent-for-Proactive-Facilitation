@@ -10,6 +10,7 @@ timing_log.txt
 *.swp
 .vscode/
 .idea/
+live_agents/
 
 # =========================
 # Node / React

@@ -639,7 +639,11 @@ class Room:
 
             text = clean_transcript(text, lang.get())
             if epoch != p.stt_epoch:
-                print(f"[room][{p.name}] discarding late transcript: \"{text}\"")
+                # The turn it belonged to already closed (STT wait timed out): too late for that turn,
+                # but still keep it in the session transcript/report.
+                print(f"[room][{p.name}] late transcript (kept in report only): \"{text}\"")
+                if text:
+                    self.recorder.add_participant_utterance(p.name, text, t_start, t_end)
                 return
             await self.broadcast_log(f"[transcript] {p.name}: \"{text}\"", "info")
             if text:
@@ -843,8 +847,10 @@ class Room:
         if all_tasks:
             print(f"{tag} waiting for {len(all_tasks)} background transcription tasks to complete...")
             try:
+                # shield: if this turn is interrupted (or times out) we stop WAITING, but the STT tasks
+                # keep running in the background. On an interruption their text lands in the next turn.
                 await asyncio.wait_for(
-                    asyncio.gather(*all_tasks, return_exceptions=True),
+                    asyncio.shield(asyncio.gather(*all_tasks, return_exceptions=True)),
                     timeout=STT_WAIT_SEC,
                 )
             except asyncio.TimeoutError:
