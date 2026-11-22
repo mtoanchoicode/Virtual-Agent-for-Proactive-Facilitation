@@ -6,7 +6,7 @@ This repository contains an early-stage prototype of an interactive 3D AI virtua
 
 ### Publication
 This paper was accepted at **ASIMOV 2026** (Workshop on Adaptive Social Interaction based on user's Mental mOdels and behaVior in HRI), held in conjunction with **The 18th International Conference on Social Robotics + Art**, 1-4 July, 2026, London (UK).
-
+a
 ---
 
 ## System Overview
