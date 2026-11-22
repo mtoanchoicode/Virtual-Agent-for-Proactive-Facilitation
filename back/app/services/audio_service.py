@@ -56,6 +56,14 @@ except ImportError:
     has_silero_vad = False
     print("[audio_service] Silero VAD not found. Falling back to simple RMS threshold. Please run 'pip install silero-vad torch'.")
 
+def has_sound(pcm_bytes: bytes) -> bool:
+    """Cheap loudness check (RMS above the noise floor). Catches a quiet/poor mic that the speech
+    detector misses; used only to tell that someone is making sound, never to cut speech turns."""
+    if len(pcm_bytes) == 0:
+        return False
+    audio = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / INT16_MAX
+    return float(np.sqrt(np.mean(audio ** 2))) > NOISE_FLOOR_RMS
+
 def is_speech_present(pcm_bytes: bytes) -> bool:
     if len(pcm_bytes) == 0:
         return False

@@ -21,7 +21,7 @@ from app.core.board import Board
 from app.core.config import BASE_DIR
 from app.core.session_report import SessionRecorder
 from app.services import lang
-from app.services.audio_service import is_speech_present, whisper_model, stream_audio_chunks
+from app.services.audio_service import is_speech_present, has_sound, whisper_model, stream_audio_chunks
 from app.utils.helpers import clean_transcript
 
 WELCOME_DIR = os.path.join(os.path.dirname(__file__), "..", "audios")
@@ -161,7 +161,6 @@ class Participant:
         self.interruption_start_time: float = 0.0
         # Bumped whenever STT state is reset, so transcripts that finish late are discarded.
         self.stt_epoch: int = 0
-        self.last_text: str = ""  # tail of previous transcript, fed to STT as context
 
     def reset_stt(self) -> None:
         self.transcripts.clear()
@@ -205,6 +204,7 @@ class Room:
         self.scenario_started_at: float = 0.0
         self._scenario_task: Optional[asyncio.Task] = None
         self._last_activity: float = 0.0   # last time anyone (user or AI) spoke
+        self._nudges_in_a_row: int = 0     # nudges since a participant last spoke; each one doubles the next wait
         self._checkpoints_done: Set[float] = set()  # fractions of the limit already announced
         self._wrapped_up: bool = False
 
@@ -462,7 +462,11 @@ class Room:
         if speaking:
             p.last_speech_time = now
             self._last_activity = now
+            self._nudges_in_a_row = 0
             self.recorder.add_speech(p.name, now, len(pcm_bytes) / (SAMPLE_RATE * 2))
+        elif has_sound(pcm_bytes):
+            # Not recognised as speech (e.g. a weak mic) but someone is audibly talking: don't nudge over them.
+            self._last_activity = now
 
         if self._processing:
             # Smooth the speaking signal: if they spoke within the last 500ms, consider it a continuous burst
@@ -617,12 +621,9 @@ class Room:
         buf.name = "audio.wav"
 
         epoch = p.stt_epoch
-        # Context for the recogniser: scenario vocabulary + the end of what this person said last.
-        # Short fragments transcribe much better with this.
-        prompt_parts = [scenario.STT_HINT_VI if lang.is_vi() else scenario.STT_HINT] if scenario.ENABLED else []
-        if p.last_text:
-            prompt_parts.append(p.last_text)
-        stt_prompt = " ".join(prompt_parts) or None
+        # Context for the recogniser: scenario vocabulary only. The speaker's previous sentence is NOT
+        # included: on weak/noisy audio the model tends to copy the prompt back as the transcript.
+        stt_prompt = (scenario.STT_HINT_VI if lang.is_vi() else scenario.STT_HINT) if scenario.ENABLED else None
 
         try:
             if whisper_model:
@@ -648,7 +649,6 @@ class Room:
             await self.broadcast_log(f"[transcript] {p.name}: \"{text}\"", "info")
             if text:
                 p.transcripts[chunk_idx] = (t_start, text)
-                p.last_text = text[-200:]
                 self.recorder.add_participant_utterance(p.name, text, t_start, t_end)
         except Exception as e:
             print(f"[room] background transcription error for {p.name}: {e}")
@@ -739,6 +739,7 @@ class Room:
 
             self.scenario_started_at = time.time()
             self._last_activity = self.scenario_started_at
+            self._nudges_in_a_row = 0
             self._checkpoints_done = set()
             self._wrapped_up = False
             await self.broadcast_log("[scenario] Both participants present — session clock started", "success")
@@ -765,8 +766,12 @@ class Room:
                 if self.mode != "full" or busy:
                     continue
 
-                if not self._wrapped_up and now - self._last_activity >= scenario.nudge_sec():
+                # Back off when nudges get no reply (e.g. nobody's mic is reaching the server): 1x, 2x, 4x, then at
+                # most 8x the wait, so the agent doesn't keep talking into silence. Reset as soon as someone speaks.
+                nudge_wait = scenario.nudge_sec() * (2 ** min(self._nudges_in_a_row, 3))
+                if not self._wrapped_up and now - self._last_activity >= nudge_wait:
                     await self._run_proactive("NUDGE")
+                    self._nudges_in_a_row += 1
         except asyncio.CancelledError:
             pass
         except Exception:
@@ -813,8 +818,15 @@ class Room:
                 messages=prompt,
                 max_tokens=120,
             )
-            text = (response.choices[0].message.content or "").strip()
-            text = re.sub(r"(?i)^(?:TEXT|MESSAGE):\s*", "", text)
+            raw = (response.choices[0].message.content or "").strip()
+            # The model sometimes answers in the Full Mode format ("ACTION: NUDGE\nTEXT: ..."). Never speak
+            # the labels, and treat an explicit NO_ACTION as "stay quiet".
+            chosen = re.search(r"(?i)\bACTION:\s*([A-Za-z_]+)", raw)
+            if chosen and chosen.group(1).upper() == "NO_ACTION":
+                print(f"[room] proactive {kind}: model chose NO_ACTION — staying quiet")
+                return
+            text = re.sub(r"(?i)\bACTION:\s*[A-Za-z_]+\s*", "", raw)
+            text = re.sub(r"(?i)\b(?:TEXT|MESSAGE):\s*", "", text).strip()
             if not text:
                 return
             timing["text_snippet"] = text[:60]

@@ -243,7 +243,22 @@ class ConversationManager:
         )
         if board_view:
             system_content += f"\n\n{BOARD_RULES}\n\n{board_view}"
-        return _localize([{"role": "system", "content": system_content}] + self.history[-PROMPT_HISTORY_LEN:])
+        # Plain history: with the ACTION:/TEXT: entries the model copies that format and the labels get spoken.
+        return _localize([{"role": "system", "content": system_content}] + self._plain_history())
+
+    def _plain_history(self) -> List[dict]:
+        """Recent history with the Full Mode ACTION:/TEXT: labels stripped from assistant entries
+        (silent NO_ACTION entries are dropped), so plain-text prompts don't mimic that format."""
+        clean_history = []
+        for entry in self.history[-PROMPT_HISTORY_LEN:]:
+            if entry["role"] == "assistant":
+                content = re.sub(r"(?i)ACTION:\s*\S+\s*\n?TEXT:\s*", "", entry["content"]).strip()
+                if not content:
+                    continue
+                clean_history.append({"role": "assistant", "content": content})
+            else:
+                clean_history.append(entry)
+        return clean_history
 
     def get_lite_prompt(self) -> List[dict]:
         """
@@ -262,21 +277,7 @@ class ConversationManager:
             "and do not use any special formatting or labels."
         )
 
-        # Clean assistant history entries: strip Full Mode ACTION:/TEXT: formatting
-        clean_history = []
-        for entry in self.history[-PROMPT_HISTORY_LEN:]:
-            if entry["role"] == "assistant":
-                content = entry["content"]
-                # Remove "ACTION: SOMETHING\nTEXT: " prefix if present
-                content = re.sub(r"(?i)ACTION:\s*\S+\s*\n?TEXT:\s*", "", content).strip()
-                # Skip if the assistant chose NO_ACTION (empty after stripping)
-                if not content:
-                    continue
-                clean_history.append({"role": "assistant", "content": content})
-            else:
-                clean_history.append(entry)
-
-        return _localize([{"role": "system", "content": system_content}] + clean_history)
+        return _localize([{"role": "system", "content": system_content}] + self._plain_history())
 
 
 shared_conv = ConversationManager()
