@@ -20,7 +20,9 @@ SILERO_VAD_THRESHOLD = 0.2
 NOISE_FLOOR_RMS = 0.008
 
 MIN_AUDIO_SECONDS = 0.4
-ROOM_SILENCE_THRESHOLD_MS = 1500  # was 5000 — reduced for faster response
+# Silence after the last speech before Yacine takes a turn. 2500 gives people time to think after
+# being asked a question (1500 cut in too fast, before the question's transcript was ready).
+ROOM_SILENCE_THRESHOLD_MS = 2500
 IMBALANCE_WORD_THRESHOLD = 50
 # Speech-to-text. gpt-4o-transcribe is more accurate on accented speech than whisper-1
 # (falls back to whisper-1 automatically if the model errors). Set STT_MODEL=whisper-1 to revert.
