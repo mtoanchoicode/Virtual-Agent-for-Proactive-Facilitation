@@ -9,23 +9,6 @@ from app.services import lang
 
 router = APIRouter()
 
-@router.websocket("/ws/mic_test")
-async def mic_test_ws(websocket: WebSocket):
-    await websocket.accept()
-    from app.services.audio_service import is_speech_present
-    prev = b""
-    try:
-        while True:
-            msg = await websocket.receive()
-            if msg.get("type") == "websocket.disconnect":
-                break
-            if msg.get("bytes"):
-                speaking = is_speech_present(msg["bytes"], prev)  # same check as the real session
-                prev = msg["bytes"]
-                await websocket.send_json({"is_speech_present": speaking})
-    except WebSocketDisconnect:
-        pass
-
 @router.websocket("/ws/voice")
 async def voice_ws(websocket: WebSocket):
     await websocket.accept()

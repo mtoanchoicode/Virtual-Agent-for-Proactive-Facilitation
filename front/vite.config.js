@@ -50,11 +50,6 @@ export default defineConfig({
         ws: true,
         secure: false,
       },
-      "/ws/mic_test": {
-        target: backendWs,
-        ws: true,
-        secure: false,
-      },
       "/room": {
         target: backendHttp,
         secure: false,

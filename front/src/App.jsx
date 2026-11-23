@@ -7,7 +7,6 @@ import { Experience } from "./components/Experience";
 import { UI } from "./components/UI";
 import { useChat } from "./hooks/useChat";
 import { ImageSegmenter, FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
-import { MicTestModal } from "./components/MicTestModal";
 import { SimulatorPanel } from "./components/SimulatorPanel";
 import RankingBoard from "./components/RankingBoard";
 import SessionSummaryModal from "./components/SessionSummaryModal";
@@ -21,7 +20,6 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "";
 function JoinModal({ onJoin }) {
   const t = useT();
   const [name, setName] = useState("");
-  const [showMicTest, setShowMicTest] = useState(false);
 
   const handleSubmit = () => {
     if (name.trim()) onJoin(name.trim());
@@ -29,8 +27,6 @@ function JoinModal({ onJoin }) {
 
   return (
     <>
-      {showMicTest && <MicTestModal onClose={() => setShowMicTest(false)} />}
-
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
         <div
           className="relative w-full max-w-sm mx-4 rounded-2xl p-8 shadow-2xl"
@@ -71,20 +67,6 @@ function JoinModal({ onJoin }) {
               border: "1px solid rgba(148,163,184,0.15)",
             }}
           />
-
-          {/* Test mic — subtle link-style button */}
-          <button
-            onClick={() => setShowMicTest(true)}
-            className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-medium transition-all"
-            style={{
-              background: "rgba(56,189,248,0.07)",
-              border: "1px solid rgba(56,189,248,0.18)",
-              color: "#7dd3fc",
-              cursor: "pointer",
-            }}
-          >
-            <span>🎙</span> {t("join.testMic", "Test my mic before joining")}
-          </button>
 
           <button
             onClick={handleSubmit}

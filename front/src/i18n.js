@@ -26,7 +26,6 @@ const vi = {
   "join.title": "Tham gia cuộc họp",
   "join.subtitle": "Nhập tên hiển thị của bạn để vào phòng.",
   "join.placeholder": "Tên của bạn…",
-  "join.testMic": "Kiểm tra mic trước khi tham gia",
   "join.button": "Tham gia →",
   // Header
   "hdr.notInRoom": "Chưa vào phòng",
@@ -118,20 +117,6 @@ const vi = {
   "rank.withdraw": "Rút lại đồng ý",
   "rank.agree": "Tôi đồng ý với thứ tự này",
   "rank.note": "Di chuyển bất kỳ thẻ nào sẽ xóa sự đồng ý của mọi người.",
-  // Mic test
-  "mic.title": "Kiểm tra mic",
-  "mic.desc": "Kiểm tra mic của bạn có được chuyển đúng tới AI và liệu bộ phát hiện giọng nói Silero VAD của máy chủ có nhận ra giọng bạn không.",
-  "mic.start": "Bắt đầu kiểm tra mic",
-  "mic.requesting": "⏳ Đang chờ trình duyệt cấp quyền mic…",
-  "mic.denied": "❌ Quyền truy cập mic bị từ chối. Hãy cho phép mic trong trình duyệt rồi tải lại trang.",
-  "mic.detected": "Đã phát hiện giọng nói",
-  "mic.listening": "Đang lắng nghe...",
-  "mic.confirmed": "AI máy chủ xác nhận có giọng nói",
-  "mic.waiting": "Đang chờ giọng người nói",
-  "mic.stop": "Dừng kiểm tra",
-  "mic.diagOk": "Silero AI VAD đã nhận ra giọng của bạn! Bạn có thể tham gia.",
-  "mic.diagWarn": "AI chưa nhận ra giọng nói. Nếu bạn đang nói, hãy nói to hơn hoặc kiểm tra cài đặt mic.",
-
   // Session summary
   "sum.title": "Tổng kết phiên",
   "sum.timeUp": "Hết giờ",
