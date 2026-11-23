@@ -64,23 +64,33 @@ def has_sound(pcm_bytes: bytes) -> bool:
     audio = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / INT16_MAX
     return float(np.sqrt(np.mean(audio ** 2))) > NOISE_FLOOR_RMS
 
-def is_speech_present(pcm_bytes: bytes) -> bool:
+def is_speech_present(pcm_bytes: bytes, prev_pcm: bytes = b"") -> bool:
+    """True if `pcm_bytes` contains speech.
+
+    `prev_pcm` is the packet received just before this one. Silero needs at least 250 ms of speech
+    per segment and is reset on every call, so a lone ~256 ms packet only counts if it is speech
+    from its very first window: word onsets and short quick phrases ("what do you think?") were
+    missed for over a second, which ended the sentence early and dropped the rest. Evaluating the
+    previous packet as context, and asking whether speech reaches into the current packet, fixes
+    that while keeping the 250 ms guard against noise.
+    """
     if len(pcm_bytes) == 0:
         return False
-        
+
     if has_silero_vad:
         try:
             # Convert PCM bytes to normalized float32 tensor
-            audio = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / INT16_MAX
+            audio = np.frombuffer(prev_pcm + pcm_bytes, dtype=np.int16).astype(np.float32) / INT16_MAX
             audio_tensor = torch.from_numpy(audio)
-            
+            current_start = len(prev_pcm) // 2  # sample index where the current packet begins
+
             # get_speech_timestamps returns a list of dicts like {'start': 123, 'end': 456}
             speech_timestamps = get_speech_timestamps(audio_tensor, vad_model, sampling_rate=16000, threshold=SILERO_VAD_THRESHOLD)
-            
-            return len(speech_timestamps) > 0
+
+            return any(ts["end"] > current_start for ts in speech_timestamps)
         except Exception:
             pass # Ignore errors and fall through
-            
+
         return False
     else:
         # Fallback to the old basic Energy-based VAD

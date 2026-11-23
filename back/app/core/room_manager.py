@@ -159,6 +159,10 @@ class Participant:
         self.pending_tasks: Set[asyncio.Task] = set()
         self.last_speech_time: float = 0.0
         self.interruption_start_time: float = 0.0
+        # Previous audio packet: context for the speech detector, and pre-roll so a word onset that
+        # the detector only confirms one packet late is not clipped.
+        self.prev_pcm: bytes = b""
+        self.prev_pcm_at: float = 0.0
         # Bumped whenever STT state is reset, so transcripts that finish late are discarded.
         self.stt_epoch: int = 0
 
@@ -457,7 +461,10 @@ class Room:
             return
 
         now = time.time()
-        speaking = is_speech_present(pcm_bytes)
+        # Only use the previous packet if it is the one right before this (not stale, e.g. after a mute).
+        prev_pcm = p.prev_pcm if now - p.prev_pcm_at < 0.6 else b""
+        p.prev_pcm, p.prev_pcm_at = pcm_bytes, now
+        speaking = is_speech_present(pcm_bytes, prev_pcm)
 
         if speaking:
             p.last_speech_time = now
@@ -516,6 +523,8 @@ class Room:
             })
 
         if speaking or len(p.audio_chunks) > 0:
+            if speaking and len(p.audio_chunks) == 0 and prev_pcm:
+                p.audio_chunks.extend(prev_pcm)  # pre-roll: keep the start of the first word
             p.audio_chunks.extend(pcm_bytes)
 
             if not self._turn_active and speaking:
